@@ -62,6 +62,7 @@ impl Parser {
                 self.expect(Delim, ")")?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
+                    id: self.next_expr_id(),
                     exported: false,
                     is_inline: false,
                     decl,
@@ -73,6 +74,7 @@ impl Parser {
             let body = self.parse_code_block()?;
             loc.end_pos = self.prev().loc.end_pos;
             return Ok(TopLevelExpr::Fn(FnExpr {
+                id: self.next_expr_id(),
                 exported: false,
                 is_inline: false,
                 decl,
@@ -89,6 +91,7 @@ impl Parser {
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
+                    id: self.next_expr_id(),
                     exported: true,
                     is_inline: false,
                     decl,
@@ -126,6 +129,7 @@ impl Parser {
                 let body = self.parse_code_block()?;
                 loc.end_pos = self.prev().loc.end_pos;
                 return Ok(TopLevelExpr::Fn(FnExpr {
+                    id: self.next_expr_id(),
                     exported: false,
                     is_inline: true,
                     decl,
@@ -615,6 +619,23 @@ impl Parser {
 
             let let_expr = self.parse_let(false, loc)?;
             return Ok(CodeExpr::Let(let_expr));
+        }
+
+        if let Some(_) = self.eat(Symbol, "fn") {
+            let mut loc = self.prev().loc;
+
+            let decl = self.parse_fn_decl(false)?;
+            let body = self.parse_code_block()?;
+            loc.end_pos = self.prev().loc.end_pos;
+
+            return Ok(CodeExpr::Fn(FnExpr {
+                id: self.next_expr_id(),
+                exported: false,
+                is_inline: false,
+                decl,
+                value: FnExprValue::Body(body),
+                loc,
+            }));
         }
 
         if let Some(_) = self.eat(Symbol, "inline") {

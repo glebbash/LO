@@ -61,24 +61,7 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
     self.print_comments_before(expr.loc().pos)
 
     if match TopLevelExpr::Fn(fn_def) = expr {
-        if fn_def.exported {
-            stdout_write("export ")
-        }
-        if fn_def.is_inline {
-            stdout_write("inline ")
-        }
-        self.print_fn_decl(fn_def.decl)
-
-        if match FnExprValue::Body(body) = fn_def.value {
-            self.print_code_block(*body)
-        } else if match FnExprValue::ImportFrom(import_from) = fn_def.value {
-            stdout_write(" = @import_from(")
-            stdout_write((*import_from).get_repr(self.parser.source))
-            stdout_write(")")
-        } else {
-            @unreachable()
-        }
-
+        self.print_fn_expr(fn_def)
         return
     }
 
@@ -219,6 +202,26 @@ fn Printer::print_fn_decl(&self, fn_decl: FnDeclExpr) {
     }
 
     self.last_printed_item_line = fn_decl.loc.end_pos.line
+}
+
+fn Printer::print_fn_expr(&self, fn_expr: &FnExpr) {
+    if fn_expr.exported {
+        stdout_write("export ")
+    }
+    if fn_expr.is_inline {
+        stdout_write("inline ")
+    }
+    self.print_fn_decl(fn_expr.decl)
+
+    if match FnExprValue::Body(body) = fn_expr.value {
+        self.print_code_block(*body)
+    } else if match FnExprValue::ImportFrom(import_from) = fn_expr.value {
+        stdout_write(" = @import_from(")
+        stdout_write((*import_from).get_repr(self.parser.source))
+        stdout_write(")")
+    } else {
+        @unreachable()
+    }
 }
 
 fn Printer::print_fn_params(&self, params: &Vec(FnParam), is_multiline: bool) {
@@ -450,6 +453,11 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         stdout_write(let_expr.name.repr)
         stdout_write(" = ")
         self.print_code_expr(let_expr.value)
+        return
+    }
+
+    if match CodeExpr::Fn(fn_expr) = expr {
+        self.print_fn_expr(fn_expr)
         return
     }
 

@@ -183,6 +183,13 @@ async function commandTest() {
         assert.strictEqual(result, 120);
     });
 
+    it("compiles nested-fn.lo", async () => {
+        const output = await compile("./examples/test/nested-fn.lo");
+
+        const program = await loadWasm(output);
+        assert.strictEqual(program.main(), 120);
+    });
+
     it("compiles include.lo", async () => {
         const output = await compile("./examples/test/include.lo");
 
@@ -1014,6 +1021,7 @@ async function commandTest() {
                 "examples/test/add.lo",
                 "examples/test/short-circuit.lo",
                 "examples/test/factorial.lo",
+                "examples/test/nested-fn.lo",
                 "examples/test/include.lo",
                 // "examples/test/hex-and-shifts.lo",
                 // "examples/test/locals.lo",

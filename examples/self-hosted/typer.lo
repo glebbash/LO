@@ -174,6 +174,7 @@ type TySymbol = struct {
     kind: TySymbolKind,
     col_index: u32,
     loc: Loc,
+    defining_fn_index: &?u32, // used for accidental capture checks
 }
 
 type TyContext = struct {
@@ -451,48 +452,52 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 continue
             }
 
-            let fn_info = self.registry.functions.at!(symbol.col_index)
-
-            let self_type_id = self.get_fn_self_type(ctx, fn_def.decl.fn_name, fn_def.decl.params) catch err {
-                self.report_error(err)
-                continue
-            }
-
-            if fn_def.decl.return_type != null {
-                let type_id = self.build_type(ctx, *fn_def.decl.return_type) catch err {
-                    self.report_error(err)
-                    continue
-                }
-
-                fn_info.type_.output = type_id
-            }
-
-            for &fn_param in fn_def.decl.params.iter!() {
-                if fn_param.param_name.repr.equals("_") {
-                    self.report_error(self.registry.error_arena.new!(Error {
-                        message: String::from_str_in(
-                            self.registry.error_arena,
-                            "Invalid fn param name `_` is not allowed here",
-                        ),
-                        loc: fn_param.param_name.loc,
-                    }))
-                }
-
-                let param_type_id = self.get_fn_param_type(ctx, fn_param, self_type_id, false) catch err {
-                    self.report_error(err)
-                    continue
-                }
-
-                fn_info.type_.inputs.push!(param_type_id)
-
-                fn_info.params.push!(FnParameter {
-                    param_name: &fn_param.param_name,
-                    param_type_id: param_type_id,
-                })
-            }
+            self.resolve_fn_signature(ctx, fn_def.decl, symbol.col_index)
         }
 
         // TODO: port
+    }
+}
+
+fn Typer::resolve_fn_signature(&self, ctx: &TyContext, fn_decl: FnDeclExpr, fn_index: u32) {
+    let fn_info = self.registry.functions.at!(fn_index)
+
+    let self_type_id = self.get_fn_self_type(ctx, fn_decl.fn_name, fn_decl.params) catch err {
+        self.report_error(err)
+        return
+    }
+
+    if fn_decl.return_type != null {
+        let type_id = self.build_type(ctx, *fn_decl.return_type) catch err {
+            self.report_error(err)
+            return
+        }
+
+        fn_info.type_.output = type_id
+    }
+
+    for &fn_param in fn_decl.params.iter!() {
+        if fn_param.param_name.repr.equals("_") {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid fn param name `_` is not allowed here",
+                ),
+                loc: fn_param.param_name.loc,
+            }))
+        }
+
+        let param_type_id = self.get_fn_param_type(ctx, fn_param, self_type_id, false) catch err {
+            self.report_error(err)
+            continue
+        }
+
+        fn_info.type_.inputs.push!(param_type_id)
+
+        fn_info.params.push!(FnParameter {
+            param_name: &fn_param.param_name,
+            param_type_id: param_type_id,
+        })
     }
 }
 
@@ -523,33 +528,105 @@ fn Typer::get_fn_self_type(
 }
 
 fn Typer::type_fns(&self) {
-    for fn_def in self.registry.functions.iter!() {
-        match FnSource::Guest(fn_info) = fn_def.source else {
+    for fn_index in 0..self.registry.functions.len {
+        match FnSource::Guest(fn_info) = self.registry.functions.get!(fn_index).source else {
             continue
         }
 
         let module_ctx = self.module_info.get!(fn_info.module_id).ctx
-
-        let ctx = self.child_ctx(module_ctx, ScopeKind::Function)
-        ctx.fn_index = &fn_info.lo_fn_index
-
-        for param in fn_def.params.iter!() {
-            let _ = self.define_local(
-                ctx,
-                &param.param_name.repr,
-                param.param_type_id,
-                param.param_name.loc,
-                param.param_name.id,
-                true,
-            )
-        }
-
-        let _ = self.type_code_block(ctx, fn_info.body, true)
+        self.type_fn(module_ctx, fn_index)
     }
+}
+
+fn Typer::type_fn(&self, parent_ctx: &TyContext, fn_index: u32) {
+    let fn_def = self.registry.functions.at!(fn_index)
+
+    match FnSource::Guest(fn_info) = fn_def.source else {
+        return
+    }
+
+    let ctx = self.child_ctx(parent_ctx, ScopeKind::Function)
+    ctx.fn_index = &fn_info.lo_fn_index
+
+    for param in fn_def.params.iter!() {
+        let _ = self.define_local(
+            ctx,
+            &param.param_name.repr,
+            param.param_type_id,
+            param.param_name.loc,
+            param.param_name.id,
+            true,
+        )
+    }
+
+    let _ = self.type_code_block(ctx, fn_info.body, true)
 }
 
 fn Typer::run_delayed_actions(&self) {
     // TODO: port
+}
+
+fn Typer::alloc_str(&self, value: String): str {
+    let str_ref = value.as_str()
+    self.allocated_strings.push!(value)
+    return str_ref
+}
+
+// defines nested fn symbols, bodies are typed later, see `type_code_block`.
+fn Typer::collect_nested_fns(&self, ctx: &TyContext, exprs: &Vec(CodeExpr)) {
+    for expr in exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            match FnExprValue::Body(body) = fn_def.value else {
+                @unreachable()
+            }
+
+            let _ = self.define_symbol(
+                ctx,
+                fn_def.decl.fn_name.repr,
+                TySymbolKind::Function,
+                fn_def.decl.fn_name.loc,
+            )
+
+            let parent_fn_name = self.registry.functions.at!(*ctx.fn_index).name
+            let full_fn_name = String::from_str(parent_fn_name)
+            full_fn_name.push_str("/")
+            full_fn_name.push_str(fn_def.decl.fn_name.repr)
+
+            let fn_index = self.registry.functions.len
+            self.registry.functions.push!(FnInfo {
+                name: self.alloc_str(full_fn_name),
+                type_: FnType {
+                    inputs: Vec::new!<TypeId>(),
+                    output: self.intern_type(Type::Void),
+                },
+                params: Vec::new!<FnParameter>(),
+                source: FnSource::Guest(heap::new!(FnSourceGuest {
+                    module_id: ctx.module_id,
+                    lo_fn_index: fn_index,
+                    body: body,
+                })),
+                exported_as: Vec::new!<String>(),
+                locals_ids: Vec::new!<u32>(),
+                wasm_fn_index: u32::MAX, // placeholder
+                wasm_locals_count: 0,
+                definition_loc: fn_def.decl.fn_name.loc,
+            })
+        }
+    }
+
+    for expr in exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+            if symbol.kind != TySymbolKind::Function {
+                continue
+            }
+
+            self.resolve_fn_signature(ctx, fn_def.decl, symbol.col_index)
+        }
+    }
 }
 
 fn Typer::type_code_block(
@@ -558,10 +635,16 @@ fn Typer::type_code_block(
     block: &CodeBlock,
     void_only: bool,
 ): Type {
+    self.collect_nested_fns(ctx, block.exprs)
+
     let diverges = false
     let diverges_naturally = false
 
     for expr in block.exprs.iter!() {
+        if match CodeExpr::Fn(_) = expr {
+            continue // skip as this is a declaration and not a code expression
+        }
+
         if diverges {
             // TODO: port
         }
@@ -579,6 +662,15 @@ fn Typer::type_code_block(
 
         if expr_type.equals(Type::Never) {
             // TODO: port
+        }
+    }
+
+    // typed after this block's own variables are declared so it errors
+    // in `get_value_info` with a "forbidden access" error instead of "unknown variable"
+    for expr in block.exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            self.type_fn(ctx, symbol.col_index)
         }
     }
 
@@ -666,6 +758,10 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             false,
         )
         return Ok()
+    }
+
+    if match CodeExpr::Fn(_) = expr {
+        @unreachable() // skipped in `type_code_block`
     }
 
     if match CodeExpr::IntrinsicCall(call) = expr {
@@ -970,6 +1066,20 @@ fn Typer::get_value_info(
     }
 
     if symbol.kind == TySymbolKind::Local {
+        if symbol.defining_fn_index != ctx.fn_index {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Forbidden access of a parent function's local `",
+            )
+            message.push_str(var_name.repr)
+            message.push_str("`")
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: var_name.loc,
+            }))
+        }
+
         let local_def = self.registry.locals.at!(symbol.col_index)
 
         // TODO: port inspection
@@ -1183,6 +1293,7 @@ fn Typer::define_symbol(
         kind: symbol_kind,
         col_index: symbol_col_index,
         loc: symbol_loc,
+        defining_fn_index: ctx.fn_index,
     })
 
     return true
@@ -1294,7 +1405,7 @@ fn get_include_info(arena: &Arena, expr: TopLevelExpr): Result(&?IncludeInfo, &E
     }
 
     if intrinsic.type_args.len != 0 {
-        return Err(bad_include_signature(arena, intrinsic.fn_name))
+        return Err(bad_signature(arena, intrinsic.fn_name))
     }
 
     let file_path = null as &?StringLiteralExpr
@@ -1327,7 +1438,7 @@ fn get_include_info(arena: &Arena, expr: TopLevelExpr): Result(&?IncludeInfo, &E
     }
 
     if file_path == null {
-        return Err(bad_include_signature(arena, intrinsic.fn_name))
+        return Err(bad_signature(arena, intrinsic.fn_name))
     }
 
     return Ok(heap::new!(IncludeInfo {
@@ -1335,20 +1446,19 @@ fn get_include_info(arena: &Arena, expr: TopLevelExpr): Result(&?IncludeInfo, &E
         alias: alias,
         with_extern: with_extern,
     }))
-}
 
-// TODO?: support nested functions?
-fn bad_include_signature(arena: &Arena, fn_name: IdentExpr): &Error {
-    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
-    do message.push_str(it) with (
-        fn_name.repr,
-        "(<str-literal>, [with_extern, alias = <str-literal>])",
-    )
+    fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+        let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+        do message.push_str(it) with (
+            fn_name.repr,
+            "(<str-literal>, [with_extern, alias = <str-literal>])",
+        )
 
-    return arena.new!(Error {
-        message: message,
-        loc: fn_name.loc,
-    })
+        return arena.new!(Error {
+            message: message,
+            loc: fn_name.loc,
+        })
+    }
 }
 
 // utils

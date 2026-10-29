@@ -475,6 +475,9 @@ impl CodeGenerator {
                 self.codegen(ctx, instrs, &let_expr.value);
                 self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index);
             }
+
+            CodeExpr::Fn(_) => return, // processed fully by typer
+
             CodeExpr::Cast(CastExpr {
                 id: _,
                 expr,

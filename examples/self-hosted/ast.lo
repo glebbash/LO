@@ -29,6 +29,7 @@ type FnDeclExpr = struct {
 }
 
 type FnExpr = struct {
+    id: u32,
     exported: bool,
     is_inline: bool,
     decl: FnDeclExpr,
@@ -194,6 +195,7 @@ type CodeExpr = enum (&void) {
     // variables
     Ident(&IdentExpr),
     Let(&LetExpr),
+    Fn(&FnExpr),
 
     // operations
     InfixOp(&InfixOpExpr),
@@ -535,6 +537,9 @@ fn CodeExpr::id(self): u32 {
     if match CodeExpr::Let(e) = self {
         return e.id
     }
+    if match CodeExpr::Fn(e) = self {
+        return e.id
+    }
     if match CodeExpr::While(e) = self {
         return e.id
     }
@@ -639,6 +644,9 @@ fn CodeExpr::loc(self): Loc {
         return e.loc
     }
     if match CodeExpr::Let(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Fn(e) = self {
         return e.loc
     }
     if match CodeExpr::While(e) = self {

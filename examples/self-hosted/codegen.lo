@@ -301,6 +301,11 @@ fn CodeGenerator::codegen(
         return
     }
 
+    if match CodeExpr::Fn(_) = expr {
+        // nested fn, nothing to emit here
+        return
+    }
+
     // TODO: port
 
     if match CodeExpr::Return(return_expr) = expr {

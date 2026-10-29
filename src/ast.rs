@@ -10,6 +10,7 @@ pub enum TopLevelExpr {
 }
 
 pub struct FnExpr {
+    pub id: ExprId,
     pub exported: bool,
     pub is_inline: bool,
     pub decl: FnDeclExpr,
@@ -152,6 +153,7 @@ pub enum CodeExpr {
     // variables
     Ident(IdentExpr),
     Let(LetExpr),
+    Fn(FnExpr),
 
     // operations
     InfixOp(InfixOpExpr),
@@ -485,6 +487,7 @@ impl CodeExpr {
             CodeExpr::InfixOp(e) => e.id,
             CodeExpr::If(e) => e.id,
             CodeExpr::Let(e) => e.id,
+            CodeExpr::Fn(e) => e.id,
             CodeExpr::While(e) => e.id,
             CodeExpr::Break(e) => e.id,
             CodeExpr::For(e) => e.id,
@@ -524,6 +527,7 @@ impl CodeExpr {
             CodeExpr::InfixOp(e) => e.loc,
             CodeExpr::If(e) => e.loc,
             CodeExpr::Let(e) => e.loc,
+            CodeExpr::Fn(e) => e.loc,
             CodeExpr::While(e) => e.loc,
             CodeExpr::Break(e) => e.loc,
             CodeExpr::For(e) => e.loc,

@@ -111,6 +111,7 @@ struct TySymbol {
     kind: TySymbolKind,
     col_index: usize,
     loc: Loc,
+    defining_fn_index: Option<usize>, // used for accidental capture checks
 }
 
 #[derive(Clone, PartialEq)]
@@ -859,47 +860,7 @@ impl Typer {
                         continue;
                     };
 
-                    let fn_info = self.registry.functions[symbol.col_index].relax_mut();
-
-                    let self_type_id = catch!(
-                        self.get_fn_self_type(ctx, &fn_def.decl.fn_name, &fn_def.decl.params),
-                        err,
-                        {
-                            self.report_error(err);
-                            continue;
-                        }
-                    );
-
-                    if let Some(return_type) = &fn_def.decl.return_type {
-                        let type_id = catch!(self.build_type(ctx, return_type), err, {
-                            self.report_error(err);
-                            continue;
-                        });
-                        fn_info.type_.output = type_id;
-                    }
-
-                    for fn_param in &fn_def.decl.params {
-                        if fn_param.param_name.repr == "_" {
-                            self.report_error(Error {
-                                message: format!("Invalid fn param name `_` is not allowed here"),
-                                loc: fn_param.param_name.loc,
-                            });
-                        }
-
-                        let param_type_id =
-                            self.get_fn_param_type(ctx, fn_param, self_type_id, false);
-                        let param_type_id = catch!(param_type_id, err, {
-                            self.report_error(err);
-                            continue;
-                        });
-
-                        fn_info.type_.inputs.push(param_type_id);
-
-                        fn_info.params.push(FnParameter {
-                            param_name: fn_param.param_name.relax(),
-                            param_type_id,
-                        });
-                    }
+                    self.resolve_fn_signature(ctx, &fn_def.decl, symbol.col_index);
                 }
                 TopLevelExpr::Let(let_expr) => {
                     let symbol = self.get_symbol(ctx, &let_expr.name.repr).unwrap().relax();
@@ -1213,34 +1174,86 @@ impl Typer {
     }
 
     fn type_fns(&mut self) {
-        for fn_def in &self.registry.functions {
-            let FnSource::Guest {
-                module_id,
-                lo_fn_index,
-                body,
-            } = fn_def.source
-            else {
+        for fn_index in 0..self.registry.functions.len() {
+            let FnSource::Guest { module_id, .. } = self.registry.functions[fn_index].source else {
                 continue;
             };
 
             let module_ctx = self.module_info[module_id].ctx;
+            self.type_fn(module_ctx, fn_index);
+        }
+    }
 
-            let ctx = self.child_ctx(module_ctx, ScopeKind::Function);
-            ctx.be_mut().fn_index = Some(lo_fn_index);
+    fn resolve_fn_signature(&self, ctx: TyContextRef, fn_decl: &FnDeclExpr, fn_index: usize) {
+        let fn_info = self.registry.be_mut().functions[fn_index].relax_mut();
 
-            for param in &fn_def.params {
-                self.define_local(
-                    ctx,
-                    &param.param_name.repr,
-                    param.param_type_id,
-                    param.param_name.loc,
-                    param.param_name.id,
-                    true,
-                );
+        let self_type_id = catch!(
+            self.get_fn_self_type(ctx, &fn_decl.fn_name, &fn_decl.params),
+            err,
+            {
+                self.report_error(err);
+                return;
+            }
+        );
+
+        if let Some(return_type) = &fn_decl.return_type {
+            let type_id = catch!(self.build_type(ctx, return_type), err, {
+                self.report_error(err);
+                return;
+            });
+            fn_info.type_.output = type_id;
+        }
+
+        for fn_param in &fn_decl.params {
+            if fn_param.param_name.repr == "_" {
+                self.report_error(Error {
+                    message: format!("Invalid fn param name `_` is not allowed here"),
+                    loc: fn_param.param_name.loc,
+                });
             }
 
-            self.type_code_block(ctx, &body, true);
+            let param_type_id = self.get_fn_param_type(ctx, fn_param, self_type_id, false);
+            let param_type_id = catch!(param_type_id, err, {
+                self.report_error(err);
+                continue;
+            });
+
+            fn_info.type_.inputs.push(param_type_id);
+
+            fn_info.params.push(FnParameter {
+                param_name: fn_param.param_name.relax(),
+                param_type_id,
+            });
         }
+    }
+
+    fn type_fn(&self, parent_ctx: TyContextRef, fn_index: usize) {
+        let fn_def = self.registry.functions[fn_index].relax();
+
+        let FnSource::Guest {
+            module_id: _,
+            lo_fn_index,
+            body,
+        } = fn_def.source
+        else {
+            return;
+        };
+
+        let ctx = self.child_ctx(parent_ctx, ScopeKind::Function);
+        ctx.be_mut().fn_index = Some(lo_fn_index);
+
+        for param in &fn_def.params {
+            self.define_local(
+                ctx,
+                &param.param_name.repr,
+                param.param_type_id,
+                param.param_name.loc,
+                param.param_name.id,
+                true,
+            );
+        }
+
+        self.type_code_block(ctx, &body, true);
     }
 
     fn run_delayed_actions(&self) {
@@ -1294,11 +1307,74 @@ impl Typer {
         }
     }
 
+    // defines nested fn symbols, bodies are typed later, see `type_code_block`.
+    fn collect_nested_fns(&self, ctx: TyContextRef, exprs: &[CodeExpr]) -> Vec<usize> {
+        let mut fn_indices = Vec::new();
+
+        for expr in exprs {
+            let CodeExpr::Fn(fn_def) = expr else {
+                continue;
+            };
+            let FnExprValue::Body(body) = &fn_def.value else {
+                unreachable!()
+            };
+
+            if !self.define_symbol(
+                ctx,
+                &fn_def.decl.fn_name.repr,
+                TySymbolKind::Function,
+                fn_def.decl.fn_name.loc,
+            ) {
+                continue;
+            }
+
+            let parent_fn_name = self.registry.functions[ctx.fn_index.unwrap()].name;
+            let full_fn_name = self
+                .be_mut()
+                .alloc_str(format!("{}/{}", parent_fn_name, fn_def.decl.fn_name.repr));
+
+            let fn_index = self.registry.functions.len();
+            self.registry.be_mut().functions.push(FnInfo {
+                name: full_fn_name,
+                type_: FnType {
+                    inputs: Vec::new(),
+                    output: self.intern_type(&Type::Void),
+                },
+                params: Vec::new(),
+                source: FnSource::Guest {
+                    module_id: ctx.module_id,
+                    lo_fn_index: fn_index,
+                    body: body.relax(),
+                },
+                exported_as: Vec::new(),
+                locals_ids: Vec::new(),
+                wasm_fn_index: u32::MAX, // placeholder
+                wasm_locals_count: 0,
+                definition_loc: fn_def.decl.fn_name.loc,
+            });
+
+            fn_indices.push((fn_index, &fn_def.decl));
+        }
+
+        for &(fn_index, fn_decl) in &fn_indices {
+            self.resolve_fn_signature(ctx, fn_decl, fn_index);
+        }
+
+        fn_indices.iter().map(|&(fn_index, _)| fn_index).collect()
+    }
+
     fn type_code_block(&self, ctx: TyContextRef, block: &CodeBlock, void_only: bool) -> Type {
+        let nested_fn_indices = self.collect_nested_fns(ctx, &block.exprs);
+
         let mut diverges = false;
         let mut diverges_naturally = false;
 
         for expr in &block.exprs {
+            // skip as this is a declaration and not a code expression
+            if let CodeExpr::Fn(_) = expr {
+                continue;
+            }
+
             if diverges {
                 self.reporter.warning(&Error {
                     message: format!("Unreachable expression"),
@@ -1326,6 +1402,12 @@ impl Typer {
                 diverges = true;
                 diverges_naturally = diverges_naturally || is_naturally_divergent(expr);
             }
+        }
+
+        // typed after this block's own variables are declared so it errors
+        // in `get_value_info` with a "forbidden access" error instead of "unknown variable"
+        for &fn_index in &nested_fn_indices {
+            self.type_fn(ctx, fn_index);
         }
 
         if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
@@ -1645,6 +1727,7 @@ impl Typer {
 
                 return Ok(());
             }
+            CodeExpr::Fn(_) => unreachable!(), // skipped in `type_code_block`
             CodeExpr::Assign(assign) => {
                 let lhs_type_id =
                     self.report_if_err(self.type_code_expr_and_load(ctx, &assign.lhs));
@@ -2868,6 +2951,16 @@ impl Typer {
 
         match symbol.kind {
             TySymbolKind::Local => {
+                if symbol.defining_fn_index != ctx.fn_index {
+                    return Err(Error {
+                        message: format!(
+                            "Forbidden access of a parent function's local `{}`",
+                            var_name.repr
+                        ),
+                        loc: var_name.loc,
+                    });
+                }
+
                 let local_def = &self.registry.locals[symbol.col_index];
 
                 if self.reporter.in_inspection_mode {
@@ -4228,6 +4321,7 @@ impl Typer {
             | CodeExpr::Sizeof(_) => todo!(),
 
             CodeExpr::Let(_)
+            | CodeExpr::Fn(_)
             | CodeExpr::PropagateError(_)
             | CodeExpr::FnCall(_)
             | CodeExpr::MethodCall(_)
@@ -4301,6 +4395,7 @@ impl Typer {
             kind: symbol_kind,
             col_index: symbol_col_index,
             loc: symbol_loc,
+            defining_fn_index: ctx.fn_index,
         });
 
         true
@@ -4770,6 +4865,7 @@ fn is_naturally_divergent(expr: &CodeExpr) -> bool {
         | CodeExpr::ResultLiteral(_)
         | CodeExpr::Ident(_)
         | CodeExpr::Let(_)
+        | CodeExpr::Fn(_)
         | CodeExpr::Cast(_)
         | CodeExpr::Assign(_)
         | CodeExpr::FieldAccess(_)

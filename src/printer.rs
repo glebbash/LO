@@ -51,31 +51,8 @@ impl Printer {
         self.print_comments_before(expr.loc().pos);
 
         match &expr {
-            TopLevelExpr::Fn(FnExpr {
-                exported,
-                is_inline,
-                decl,
-                value,
-                loc: _,
-            }) => {
-                if *exported {
-                    stdout_write("export ");
-                }
-                if *is_inline {
-                    stdout_write("inline ");
-                }
-                self.print_fn_decl(decl);
-
-                match value {
-                    FnExprValue::Body(body) => {
-                        self.print_code_block(body);
-                    }
-                    FnExprValue::ImportFrom(imported_from) => {
-                        stdout_write(" = @import_from(");
-                        stdout_write(imported_from.get_repr(self.parser.source));
-                        stdout_write(")");
-                    }
-                }
+            TopLevelExpr::Fn(fn_expr) => {
+                self.print_fn_expr(fn_expr);
             }
             TopLevelExpr::Let(LetExpr {
                 id: _,
@@ -223,6 +200,27 @@ impl Printer {
         }
 
         self.last_printed_item_line = fn_decl.loc.end_pos.line;
+    }
+
+    fn print_fn_expr(&mut self, fn_expr: &FnExpr) {
+        if fn_expr.exported {
+            stdout_write("export ");
+        }
+        if fn_expr.is_inline {
+            stdout_write("inline ");
+        }
+        self.print_fn_decl(&fn_expr.decl);
+
+        match &fn_expr.value {
+            FnExprValue::Body(body) => {
+                self.print_code_block(body);
+            }
+            FnExprValue::ImportFrom(imported_from) => {
+                stdout_write(" = @import_from(");
+                stdout_write(imported_from.get_repr(self.parser.source));
+                stdout_write(")");
+            }
+        }
     }
 
     fn print_fn_params(&mut self, params: &Vec<FnParam>, is_multiline: bool) {
@@ -481,6 +479,10 @@ impl Printer {
                 stdout_write(&name.repr);
                 stdout_write(" = ");
                 self.print_code_expr(&value);
+            }
+
+            CodeExpr::Fn(fn_expr) => {
+                self.print_fn_expr(fn_expr);
             }
 
             CodeExpr::Return(ReturnExpr {
