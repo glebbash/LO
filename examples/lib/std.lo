@@ -602,6 +602,10 @@ fn String::push(self, c: u8) {
     self.chars.push!(c)
 }
 
+fn String::truncate(self, new_len: u32) {
+    self.chars.len = new_len
+}
+
 fn String::char_at(self, index: u32): u8 {
     return self.chars.get!(index)
 }

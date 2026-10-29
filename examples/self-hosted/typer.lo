@@ -372,7 +372,45 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
 }
 
 fn Typer::collect_included_symbols(&self, ctx: &TyContext) {
-    // TODO: port
+    self.collect_included_symbols_(ctx, ctx, String::from_str(""), true)
+}
+
+fn Typer::collect_included_symbols_(
+    &self,
+    includer: &TyContext,
+    includee: &TyContext,
+    prefix: String,
+    force_go_deeper: bool,
+) {
+    if includer.module_id != includee.module_id {
+        for symbol in includee.symbols.iter!() {
+            let included_symbol = symbol
+
+            if prefix.len() != 0 {
+                // TODO: port
+            }
+
+            // TODO: port (report redefinition if included_symbol conflicts with an existing one)
+
+            includer.add_symbol(included_symbol)
+        }
+    }
+
+    let original_prefix_len = prefix.len()
+    for include in self.registry.modules.get!(includee.module_id).includes.iter!() {
+        if !(include.with_extern || force_go_deeper) {
+            continue
+        }
+
+        if include.alias != null {
+            prefix.push_str((*include.alias).as_str())
+            prefix.push_str("::")
+        }
+
+        let sub_includee = self.module_info.get!(include.module_id)
+        self.collect_included_symbols_(includer, sub_includee.ctx, prefix, false)
+        prefix.truncate(original_prefix_len)
+    }
 }
 
 fn Typer::resolve_type_alias(&self, type_alias: &TyTypeAlias) {
@@ -1238,6 +1276,79 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
 
 fn Typer::align(value: u32, alignment: u32): u32 {
     return (value + alignment - 1) / alignment * alignment
+}
+
+type IncludeInfo = struct {
+    file_path: &StringLiteralExpr,
+    alias: &?String,
+    with_extern: bool,
+}
+
+fn get_include_info(arena: &Arena, expr: TopLevelExpr): Result(&?IncludeInfo, &Error) {
+    match TopLevelExpr::Intrinsic(intrinsic) = expr else {
+        return Ok(null)
+    }
+
+    if !intrinsic.fn_name.repr.equals("include") {
+        return Ok(null)
+    }
+
+    if intrinsic.type_args.len != 0 {
+        return Err(bad_include_signature(arena, intrinsic.fn_name))
+    }
+
+    let file_path = null as &?StringLiteralExpr
+    let alias = null as &?String
+    let with_extern = false
+
+    for arg in intrinsic.args.items.iter!() {
+        if match CodeExpr::StringLiteral(str_expr) = arg {
+            file_path = str_expr
+            continue
+        }
+
+        if match CodeExpr::Ident(ident) = arg {
+            if ident.repr.equals("with_extern") {
+                with_extern = true
+                continue
+            }
+        }
+
+        if match CodeExpr::Assign(assign) = arg {
+            if match CodeExpr::Ident(lhs) = assign.lhs {
+                if match CodeExpr::StringLiteral(rhs) = assign.rhs {
+                    if lhs.repr.equals("alias") {
+                        alias = heap::new!(rhs.value.clone())
+                        continue
+                    }
+                }
+            }
+        }
+    }
+
+    if file_path == null {
+        return Err(bad_include_signature(arena, intrinsic.fn_name))
+    }
+
+    return Ok(heap::new!(IncludeInfo {
+        file_path: file_path,
+        alias: alias,
+        with_extern: with_extern,
+    }))
+}
+
+// TODO?: support nested functions?
+fn bad_include_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+    do message.push_str(it) with (
+        fn_name.repr,
+        "(<str-literal>, [with_extern, alias = <str-literal>])",
+    )
+
+    return arena.new!(Error {
+        message: message,
+        loc: fn_name.loc,
+    })
 }
 
 // utils

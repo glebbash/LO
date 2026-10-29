@@ -361,8 +361,28 @@ fn Registry::include(
     self.expr_id_count = self.modules.get!(module_id).parser.expr_id_count
 
     if !self.in_single_file_mode {
-        for &expr in self.modules.get!(module_id).parser.ast.iter!() {
-            // TODO: port
+        for expr in self.modules.get!(module_id).parser.ast.iter!() {
+            let include_info = get_include_info(self.error_arena, expr) catch err {
+                self.reporter.error(err)
+                continue
+            }
+
+            if include_info == null {
+                continue
+            }
+
+            let included_module_id = self.include(
+                include_info.file_path.value.as_str(),
+                include_info.file_path.loc,
+            ) catch _ {
+                continue
+            }
+
+            self.modules.get!(module_id).includes.push!(ModuleInclude {
+                module_id: included_module_id,
+                alias: include_info.alias,
+                with_extern: include_info.with_extern,
+            })
         }
     }
 

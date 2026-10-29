@@ -1014,7 +1014,7 @@ async function commandTest() {
                 "examples/test/add.lo",
                 "examples/test/short-circuit.lo",
                 "examples/test/factorial.lo",
-                // "examples/test/include.lo",
+                "examples/test/include.lo",
                 // "examples/test/hex-and-shifts.lo",
                 // "examples/test/locals.lo",
                 // "examples/test/else-if.lo",
