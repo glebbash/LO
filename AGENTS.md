@@ -41,6 +41,7 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
     - Writing through a `get!` result silently does nothing. `Registry::add_local` had this bug.
     - Use `at!` when you mutate or take `&field`.
 - **`for x in v.iter!()` binds a copy.** `&x.field` then dangles. Use `for &x in v.iter!()` to iterate by reference.
+- **`for i in a..b` evaluates `b` once**, into a hidden local, before the loop starts (see `CodeExpr::For` / `ForExprIterator::Range` in `src/codegen.rs`). Safe to write `for i in 0..v.len` even while appending to `v` inside the loop — new items are never visited.
 - **`at!` returns a pointer; `as u32` on it casts the address.** Do not use `v.at!(i)` where you want the value (e.g. `locals_ids.at!(i)` as an index). Use `get!` for primitive items.
 - **`Abort code N`:** look up N in `examples/lib/std.lo` (`AbortCode`). 4 = `VEC_OUT_OF_BOUNDS`. The stack trace shows function names only, not call sites, so bisect with temporary prints (`stderr_writeln("A")`). Remove them afterwards.
 - **No `as_str` on `str`.** `Registry::fmt` is still a stub that returns `"<?>"`, so printing a type gives `<?>`.
