@@ -666,7 +666,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         // TODO: port
         let result_type_id = lhs_type_id
-        if infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
+        if infix_op.op_tag == InfixOpTag::Less || infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
             result_type_id = self.intern_type(Type::Bool)
         }
         if infix_op.op_tag == InfixOpTag::MulAssign {
@@ -698,6 +698,22 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             result_type_id: result_type_id,
         })
 
+        return Ok()
+    }
+
+    // TODO: port
+
+    if match CodeExpr::FnCall(call) = expr {
+        // TODO: port enum constructor calls
+
+        self.type_fn_call(
+            ctx,
+            call.fn_name.repr,
+            null,
+            call.args.items,
+            call.id,
+            call.fn_name.loc,
+        )?
         return Ok()
     }
 
@@ -793,8 +809,17 @@ fn Typer::get_binary_op_kind(
 
     // TODO: port
     if wasm_op_type == WasmType::I32 {
+        if op_tag == InfixOpTag::Less {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_LT_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_LT_U)
+        }
         if op_tag == InfixOpTag::Add {
             return Ok(WasmBinaryOpKind::I32_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::I32_SUB)
         }
         if op_tag == InfixOpTag::Mul {
             return Ok(WasmBinaryOpKind::I32_MUL)
@@ -809,6 +834,85 @@ fn Typer::get_binary_op_kind(
 
     // TODO: port
     todo!()
+}
+
+fn Typer::type_fn_call(
+    &self,
+    ctx: &TyContext,
+    fn_name: str,
+    receiver_arg: &?CodeExpr,
+    args: &Vec(CodeExpr),
+    call_expr_id: ExprId,
+    loc: Loc,
+): Result(void, &Error) {
+    let all_good = true
+    let arg_types = Vec::new!<TypeId>()
+
+    // TODO: port
+    if receiver_arg != null {
+        todo!()
+    }
+
+    for arg in args.iter!() {
+        let type_id = self.type_code_expr_and_load(ctx, arg) catch err {
+            self.report_error(err)
+            all_good = false
+            continue
+        }
+        arg_types.push!(type_id)
+    }
+
+    let fn_index = self.get_fn_index_for_call(ctx, fn_name, loc)?
+    let fn_info = self.registry.functions.at!(fn_index)
+
+    self.store_expr_info(ctx, call_expr_id, self.registry.call_info.len)
+    self.registry.call_info.push!(CallInfo {
+        value: CallInfoValue::FnCall(fn_index),
+        return_type_id: fn_info.type_.output,
+    })
+
+    // TODO: port inspection
+
+    if all_good && !self.is_types_compatible(fn_info.type_.inputs, arg_types) {
+        // TODO: port
+        todo!()
+    }
+
+    return Ok()
+}
+
+fn Typer::get_fn_index_for_call(
+    &self,
+    ctx: &TyContext,
+    fn_name: str,
+    loc: Loc,
+): Result(u32, &Error) {
+    let symbol = self.get_symbol(ctx, fn_name)
+    if symbol == null {
+        let message = String::from_str_in(self.registry.error_arena, "Unknown function: ")
+        message.push_str(fn_name)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    if symbol.kind != TySymbolKind::Function {
+        let message = String::from_str_in(self.registry.error_arena, "Trying to call ")
+        do message.push_str(it) with (
+            fn_name,
+            " which is not a function, defined at: ",
+            symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(symbol.col_index)
 }
 
 fn Typer::get_value_info(
@@ -972,6 +1076,20 @@ fn Typer::define_type(&self, ctx: &TyContext, name: str, type_: Type, loc: Loc) 
         expr: null as &TypeExpr, // shouldn't be accessed since alias is already resolved
         resolution: TypeResolution::Resolved,
     })
+}
+
+fn Typer::is_types_compatible(&self, slots: &Vec(TypeId), values: &Vec(TypeId)): bool {
+    if slots.len != values.len {
+        return false
+    }
+
+    for i in 0..slots.len {
+        if !self.is_type_compatible(self.get_type(slots.get!(i)), self.get_type(values.get!(i))) {
+            return false
+        }
+    }
+
+    return true
 }
 
 fn Typer::is_type_compatible(&self, slot: Type, value: Type): bool {

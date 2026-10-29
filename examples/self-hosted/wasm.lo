@@ -94,6 +94,7 @@ type WasmInstr = enum (&void) {
     BlockStart(&WasmInstrBlockStart),
     Else,
     BlockEnd,
+    Call(&WasmInstrCall),
 }
 
 type WasmInstrLocalGet = struct {
@@ -115,6 +116,10 @@ type WasmInstrBlockStart = struct {
 
 type WasmInstrBinaryOp = struct {
     kind: WasmBinaryOpKind,
+}
+
+type WasmInstrCall = struct {
+    fn_index: u32,
 }
 
 type WasmUnaryOpKind = enum {
@@ -504,6 +509,12 @@ fn write_instr(out: &Vec(u8), instr: WasmInstr) {
 
     if match WasmInstr::Return(_) = instr {
         write_u8(out, 0x0Fu8)
+        return
+    }
+
+    if match WasmInstr::Call(call) = instr {
+        write_u8(out, 0x10u8)
+        write_u32(out, call.fn_index)
         return
     }
 

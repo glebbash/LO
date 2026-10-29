@@ -385,6 +385,19 @@ fn CodeGenerator::codegen(
         return
     }
 
+    if match CodeExpr::FnCall(call) = expr {
+        let expr_info = self.get_expr_info(ctx, call.id, call.loc)
+        let call_info = self.registry.call_info.at!(expr_info)
+
+        if match CallInfoValue::FnCall(fn_index) = call_info.value {
+            self.codegen_fn_call(ctx, instrs, fn_index, null, call.args.items)
+            return
+        }
+
+        // TODO: port
+        todo!()
+    }
+
     if match CodeExpr::IntrinsicCall(call) = expr {
         // TODO: port
 
@@ -437,8 +450,26 @@ fn CodeGenerator::codegen_match_header(&self) {
     todo!()
 }
 
-fn CodeGenerator::codegen_fn_call(&self) {
-    todo!()
+fn CodeGenerator::codegen_fn_call(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    fn_index: u32,
+    receiver_arg: &?CodeExpr,
+    args: &Vec(CodeExpr),
+) {
+    let fn_info = self.registry.functions.at!(fn_index)
+
+    if receiver_arg != null {
+        self.codegen(ctx, instrs, *receiver_arg)
+    }
+    for arg in args.iter!() {
+        self.codegen(ctx, instrs, arg)
+    }
+
+    instrs.push!(WasmInstr::Call(
+        self.wasm_module.arena.new!(WasmInstrCall { fn_index: fn_info.wasm_fn_index }),
+    ))
 }
 
 fn CodeGenerator::codegen_inline_fn_call(&self) {
