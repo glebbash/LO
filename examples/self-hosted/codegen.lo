@@ -107,6 +107,7 @@ fn CodeGenerator::codegen_all(&self) {
         }
     }
 
+    // resolve wasm fn indicies and populate type, import and export sections
     let wasm_import_fn_index = 0
     let wasm_fn_index = fn_imports_count
     for fn_index in 0..self.registry.functions.len {
@@ -164,6 +165,7 @@ fn CodeGenerator::codegen_all(&self) {
 
     // TODO: port
 
+    // build function codes
     for fn_info in self.registry.functions.iter!() {
         match FnSource::Guest(guest_info) = fn_info.source else {
             continue
@@ -178,9 +180,29 @@ fn CodeGenerator::codegen_all(&self) {
 
         // TODO: port
 
+        let wasm_locals_flat = Vec::new!<WasmType>()
+
+        for i in fn_info.params.len..fn_info.locals_ids.len {
+            let local_id = fn_info.locals_ids.get!(i)
+            let local_def = self.registry.locals.at!(local_id)
+            self.lower_type(self.get_type(local_def.local_type_id), wasm_locals_flat)
+        }
+
         let wasm_locals = Vec::new!<WasmLocals>()
 
-        // TODO: port locals other than params
+        for wasm_local_type in wasm_locals_flat.iter!() {
+            if wasm_locals.len > 0u32 {
+                let last = wasm_locals.at!(wasm_locals.len - 1u32)
+                if last.value_type == wasm_local_type {
+                    last.count += 1u32
+                    continue
+                }
+            }
+            wasm_locals.push!(WasmLocals {
+                count: 1u32,
+                value_type: wasm_local_type,
+            })
+        }
 
         self.wasm_module.codes.push!(WasmFn {
             locals: wasm_locals,
@@ -245,13 +267,37 @@ fn CodeGenerator::codegen(
     // TODO: port
 
     if match CodeExpr::IntLiteral(int) = expr {
-        // TODO: port proper
+        // TODO: port
 
         instrs.push!(WasmInstr::I32Const(
-            // TODO: use arena allocation attached to WasmModule
-            heap::new!(WasmInstrI32Const { value: int.value as i32 }),
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: int.value as i32 }),
         ))
 
+        return
+    }
+
+    if match CodeExpr::BoolLiteral(bool_literal) = expr {
+        let value = 0 as i32
+        if bool_literal.value {
+            value = 1 as i32
+        }
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: value }),
+        ))
+        return
+    }
+
+    if match CodeExpr::Let(let_expr) = expr {
+        if let_expr.is_inline {
+            // was handled in typer
+            return
+        }
+
+        // TODO: port
+
+        let local = self.get_local_info(ctx, let_expr.name.id, let_expr.name.loc)
+        self.codegen(ctx, instrs, let_expr.value)
+        self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index)
         return
     }
 
@@ -271,14 +317,63 @@ fn CodeGenerator::codegen(
         let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc)
         let op_info = self.registry.binary_op_info.at!(expr_info)
 
-        // TODO: port short-circuiting AND and OR
-        // TODO: port compound assignment
+        // short-circuiting AND
+        if infix_op.op_tag == InfixOpTag::And {
+            self.codegen(ctx, instrs, infix_op.lhs)
+            instrs.push!(WasmInstr::BlockStart(
+                self.wasm_module.arena.new!(WasmInstrBlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::SingleOut(
+                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
+                            out_type: WasmType::I32,
+                        }),
+                    ),
+                }),
+            ))
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::Else)
+            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+            instrs.push!(WasmInstr::BlockEnd)
+            return
+        }
+
+        // short-circuiting OR
+        if infix_op.op_tag == InfixOpTag::Or {
+            self.codegen(ctx, instrs, infix_op.lhs)
+            instrs.push!(WasmInstr::BlockStart(
+                self.wasm_module.arena.new!(WasmInstrBlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::SingleOut(
+                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
+                            out_type: WasmType::I32,
+                        }),
+                    ),
+                }),
+            ))
+            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 1 as i32 })))
+            instrs.push!(WasmInstr::Else)
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::BlockEnd)
+            return
+        }
+
+        if op_info.is_compound_assignment {
+            let var = self.var_from_expr(ctx, infix_op.lhs)
+
+            self.codegen_var_set_prepare(instrs, var)
+            self.codegen_var_get(ctx, instrs, var)
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
+            ))
+            self.codegen_var_set(ctx, instrs, var)
+            return
+        }
 
         self.codegen(ctx, instrs, infix_op.lhs)
         self.codegen(ctx, instrs, infix_op.rhs)
         instrs.push!(WasmInstr::BinaryOp(
-            // TODO: use arena allocation attached to WasmModule
-            heap::new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
+            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
         ))
 
         return
@@ -287,6 +382,49 @@ fn CodeGenerator::codegen(
     if match CodeExpr::Ident(_) = expr {
         let var = self.var_from_expr(ctx, expr)
         self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
+    if match CodeExpr::IntrinsicCall(call) = expr {
+        // TODO: port
+
+        if call.fn_name.repr.equals("unreachable") {
+            instrs.push!(WasmInstr::Unreachable)
+            return
+        }
+
+        // TODO: port
+    }
+
+    if match CodeExpr::If(if_expr) = expr {
+        if match IfCond::Expr(cond_expr) = if_expr.cond {
+            self.codegen(ctx, instrs, *cond_expr)
+
+            // `if` condition runs outside of then_branch's scope
+            // TODO: port
+        }
+
+        // TODO: port
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::If,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        self.codegen_code_block(ctx, instrs, &if_expr.then_block)
+
+        // TODO: port
+
+        if match ElseBlock::Else(else_block) = if_expr.else_block {
+            instrs.push!(WasmInstr::Else)
+            self.codegen_code_block(ctx, instrs, else_block)
+        }
+
+        // TODO: port
+
+        instrs.push!(WasmInstr::BlockEnd)
         return
     }
 
@@ -365,30 +503,49 @@ fn CodeGenerator::codegen_local_get(
 ) {
     for i in 0..Typer::count_primitive_components(self.registry, local_type) {
         instrs.push!(WasmInstr::LocalGet(
-            // TODO: use arena allocation attached to WasmModule
-            heap::new!(WasmInstrLocalGet { local_index: local_index + i }),
+            self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: local_index + i }),
         ))
     }
 }
 
-fn CodeGenerator::codegen_var_set_prepare(&self) {
+fn CodeGenerator::codegen_var_set_prepare(&self, instrs: &Vec(WasmInstr), var: VarInfo) {
+    // TODO: port
+}
+
+fn CodeGenerator::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), var: VarInfo) {
+    if match VarInfo::Local(local) = var {
+        self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index)
+        return
+    }
+
+    // TODO: port
+
     todo!()
 }
 
-fn CodeGenerator::codegen_var_set(&self) {
-    todo!()
-}
-
-fn CodeGenerator::codegen_local_set(&self) {
-    todo!()
+fn CodeGenerator::codegen_local_set(&self, instrs: &Vec(WasmInstr), local_type: Type, local_index: u32) {
+    let i = Typer::count_primitive_components(self.registry, local_type)
+    while i > 0 {
+        i = i - 1
+        instrs.push!(WasmInstr::LocalSet(
+            self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: local_index + i }),
+        ))
+    }
 }
 
 fn CodeGenerator::codegen_load_or_store(&self) {
     todo!()
 }
 
-fn CodeGenerator::get_local_info(&self) {
-    todo!()
+fn CodeGenerator::get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind_loc: Loc): VarInfoLocal {
+    let expr_info = self.get_expr_info(ctx, bind_id, bind_loc)
+    let value_info = self.registry.value_info.at!(expr_info)
+    let local_info = self.registry.locals.at!(value_info.col_index)
+
+    return VarInfoLocal {
+        local_index: local_info.wasm_local_index,
+        var_type_id: local_info.local_type_id,
+    }
 }
 
 fn CodeGenerator::define_unnamed_local(&self) {
@@ -474,7 +631,7 @@ fn CodeGenerator::get_type_expr_value(&self) {
     todo!()
 }
 
-// TODO: port proper
+// TODO: port
 fn CodeGenerator::get_expr_info(
     &self,
     ctx: &ExprContext,

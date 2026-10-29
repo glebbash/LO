@@ -1,6 +1,8 @@
 @include("./common.lo")
 
 type WasmModule = struct {
+    arena: &Arena,
+
     types: &Vec(WasmFnType),
     imports: &Vec(WasmImport),
     functions: &Vec(u32),
@@ -26,6 +28,26 @@ type WasmType = enum {
     I64 = 0x7E,
     F32 = 0x7D,
     F64 = 0x7C,
+}
+
+type WasmBlockKind = enum {
+    Block = 0x02,
+    Loop = 0x03,
+    If = 0x04,
+}
+
+type WasmBlockTypeSingleOut = struct {
+    out_type: WasmType,
+}
+
+type WasmBlockTypeInOut = struct {
+    type_index: u32,
+}
+
+type WasmBlockType = enum (&void) {
+    NoOut,
+    SingleOut(&WasmBlockTypeSingleOut),
+    InOut(&WasmBlockTypeInOut),
 }
 
 type WasmImport = struct {
@@ -68,14 +90,27 @@ type WasmInstr = enum (&void) {
     Return,
     BinaryOp(&WasmInstrBinaryOp),
     LocalGet(&WasmInstrLocalGet),
+    LocalSet(&WasmInstrLocalSet),
+    BlockStart(&WasmInstrBlockStart),
+    Else,
+    BlockEnd,
 }
 
 type WasmInstrLocalGet = struct {
     local_index: u32,
 }
 
+type WasmInstrLocalSet = struct {
+    local_index: u32,
+}
+
 type WasmInstrI32Const = struct {
     value: i32,
+}
+
+type WasmInstrBlockStart = struct {
+    block_kind: WasmBlockKind,
+    block_type: WasmBlockType,
 }
 
 type WasmInstrBinaryOp = struct {
@@ -183,26 +218,6 @@ type WasmStoreKind = enum {
     I32_16 = 0x3B,
 }
 
-type WasmBlockType = enum (&void) {
-    NoOut,
-    SingleOut(&WasmBlockTypeSingleOut),
-    InOut(&WasmBlockTypeInOut),
-}
-
-type WasmBlockTypeSingleOut = struct {
-    out_type: WasmType,
-}
-
-type WasmBlockTypeInOut = struct {
-    type_index: u32,
-}
-
-type WasmBlockKind = enum {
-    Block = 0x02,
-    Loop = 0x03,
-    If = 0x04,
-}
-
 type WasmLimits = struct {
     min: u32,
     max: &?u32,
@@ -251,6 +266,7 @@ type WasmLocalInfo = struct {
 
 fn WasmModule::new(): &WasmModule {
     return heap::new!(WasmModule {
+        arena: Arena::new(1024),
         types: Vec::new!<WasmFnType>(),
         imports: Vec::new!<WasmImport>(),
         functions: Vec::new!<u32>(),
@@ -502,9 +518,42 @@ fn write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
+    if match WasmInstr::LocalSet(local_set) = instr {
+        write_u8(out, 0x21u8)
+        write_u32(out, local_set.local_index)
+        return
+    }
+
     if match WasmInstr::I32Const(i32_const) = instr {
         write_u8(out, 0x41u8)
         write_i32(out, i32_const.value)
+        return
+    }
+
+    if match WasmInstr::BlockStart(block_start) = instr {
+        write_u8(out, block_start.block_kind as u8)
+        if match WasmBlockType::NoOut(_) = block_start.block_type {
+            write_u8(out, 0x40u8)
+            return
+        }
+        if match WasmBlockType::SingleOut(single_out) = block_start.block_type {
+            write_u8(out, single_out.out_type as u8)
+            return
+        }
+        if match WasmBlockType::InOut(in_out) = block_start.block_type {
+            write_i32(out, in_out.type_index as i32)
+            return
+        }
+        return
+    }
+
+    if match WasmInstr::Else(_) = instr {
+        write_u8(out, 0x05u8)
+        return
+    }
+
+    if match WasmInstr::BlockEnd(_) = instr {
+        write_u8(out, 0x0Bu8)
         return
     }
 

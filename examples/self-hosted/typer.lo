@@ -34,6 +34,18 @@ fn Type::equals(self, other): bool {
         }
     }
 
+    if match Type::Void(_) = self {
+        if match Type::Void(_) = other {
+            return true
+        }
+    }
+
+    if match Type::Bool(_) = self {
+        if match Type::Bool(_) = other {
+            return true
+        }
+    }
+
     if match Type::U32(_) = self {
         if match Type::U32(_) = other {
             return true
@@ -587,6 +599,51 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
     // TODO: port
 
+    if match CodeExpr::BoolLiteral(bool_literal) = expr {
+        self.store_type(ctx, bool_literal.id, Type::Bool)
+        return Ok()
+    }
+
+    if match CodeExpr::Let(let_expr) = expr {
+        self.type_code_expr(ctx, let_expr.value) catch err {
+            self.report_error(err)
+            self.store_type(ctx, let_expr.id, Type::Void)
+            return Ok()
+        }
+
+        let value_type_id = *self.load_type(ctx, let_expr.value)
+
+        if self.get_type(value_type_id).equals(Type::Never) {
+            self.store_type(ctx, let_expr.id, Type::Never)
+        } else {
+            self.store_type(ctx, let_expr.id, Type::Void)
+        }
+
+        let _ = self.define_local(
+            ctx,
+            &let_expr.name.repr,
+            value_type_id,
+            let_expr.name.loc,
+            let_expr.name.id,
+            false,
+        )
+        return Ok()
+    }
+
+    if match CodeExpr::IntrinsicCall(call) = expr {
+        // TODO: port
+
+        if call.fn_name.repr.equals("unreachable") {
+            self.store_type(ctx, call.id, Type::Never)
+
+            // TODO: port
+
+            return Ok()
+        }
+
+        // TODO: port
+    }
+
     if match CodeExpr::InfixOp(infix_op) = expr {
         let lhs_type_id_res = self.type_code_expr_and_load(ctx, infix_op.lhs)
         let rhs_type_id = self.type_code_expr_and_load(ctx, infix_op.rhs)?
@@ -607,20 +664,38 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }))
         }
 
-        // TODO: port result type for comparison ops, compound assignment
+        // TODO: port
+        let result_type_id = lhs_type_id
+        if infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
+            result_type_id = self.intern_type(Type::Bool)
+        }
+        if infix_op.op_tag == InfixOpTag::MulAssign {
+            result_type_id = self.intern_type(Type::Void)
+        }
+
+        let is_compound_assignment = false
+        let base_op = infix_op.op_tag
+
+        // TODO: port
+        if infix_op.op_tag == InfixOpTag::MulAssign {
+            is_compound_assignment = true
+            base_op = InfixOpTag::Mul
+
+            // TODO: port
+        }
 
         let op_kind = self.get_binary_op_kind(
             ctx,
-            infix_op.op_tag,
+            base_op,
             self.get_type(lhs_type_id),
             infix_op.op_loc,
         )?
 
         self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
         self.registry.binary_op_info.push!(BinaryOpInfo {
-            is_compound_assignment: false,
+            is_compound_assignment: is_compound_assignment,
             op_kind: op_kind,
-            result_type_id: lhs_type_id,
+            result_type_id: result_type_id,
         })
 
         return Ok()
@@ -667,6 +742,32 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::If(if_expr) = expr {
+        let then_ctx = self.child_ctx(ctx, ScopeKind::Block)
+
+        // TODO: port
+        if match IfCond::Expr(cond_expr) = if_expr.cond {
+            let _ = self.type_code_expr_and_load(ctx, *cond_expr)
+        }
+
+        let then_type = self.type_code_block(then_ctx, &if_expr.then_block, true)
+
+        let else_type = Type::Void
+        if match ElseBlock::Else(else_block) = if_expr.else_block {
+            let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
+            else_type = self.type_code_block(else_ctx, else_block, true)
+        }
+
+        // TODO: port
+
+        if then_type.equals(Type::Never) && else_type.equals(Type::Never) {
+            self.store_type(ctx, if_expr.id, Type::Never)
+        } else {
+            self.store_type(ctx, if_expr.id, Type::Void)
+        }
+        return Ok()
+    }
+
     // TODO: port
 
     todo!()
@@ -683,15 +784,26 @@ fn Typer::get_binary_op_kind(
     let signed = false
     let wasm_op_type = WasmType::I32
 
-    // TODO: port other types
-    match Type::U32(_) = operand_type else {
-        todo!()
+    // TODO: port
+    if !operand_type.equals(Type::Bool) {
+        match Type::U32(_) = operand_type else {
+            todo!()
+        }
     }
 
     // TODO: port
     if wasm_op_type == WasmType::I32 {
         if op_tag == InfixOpTag::Add {
             return Ok(WasmBinaryOpKind::I32_ADD)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::I32_MUL)
+        }
+        if op_tag == InfixOpTag::And {
+            return Ok(WasmBinaryOpKind::I32_AND)
+        }
+        if op_tag == InfixOpTag::Or {
+            return Ok(WasmBinaryOpKind::I32_OR)
         }
     }
 
