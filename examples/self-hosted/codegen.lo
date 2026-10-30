@@ -439,8 +439,10 @@ fn CodeGenerator::codegen(
             instrs.push!(WasmInstr::Else)
             self.codegen_code_block(ctx, instrs, else_block)
         }
-
-        // TODO: port
+        if match ElseBlock::ElseIf(code_expr) = if_expr.else_block {
+            instrs.push!(WasmInstr::Else)
+            self.codegen(ctx, instrs, *code_expr)
+        }
 
         instrs.push!(WasmInstr::BlockEnd)
         return

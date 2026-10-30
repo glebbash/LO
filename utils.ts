@@ -157,12 +157,28 @@ async function commandTest() {
         assert.strictEqual(result, 42);
     });
 
+    it("compiles hex-and-shifts.lo", async () => {
+        const output = await compile("./examples/test/hex-and-shifts.lo");
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 31);
+    });
+
     it("compiles add.lo", async () => {
         const output = await compile("./examples/test/add.lo");
 
         const program = await loadWasm(output);
 
         assert.strictEqual(program.add(2, 3), 5);
+    });
+
+    it("compiles locals.lo", async () => {
+        const output = await compile("./examples/test/locals.lo");
+
+        const program = await loadWasm(output);
+        assert.deepEqual(program.sub(5, 3), 2);
     });
 
     it("compiles short-circuit.lo", async () => {
@@ -196,22 +212,6 @@ async function commandTest() {
         const program = await loadWasm(output);
 
         assert.strictEqual(program.main(), 120);
-    });
-
-    it("compiles hex-and-shifts.lo", async () => {
-        const output = await compile("./examples/test/hex-and-shifts.lo");
-
-        const program = await loadWasm(output);
-        const result = program.main();
-
-        assert.strictEqual(result, 31);
-    });
-
-    it("compiles locals.lo", async () => {
-        const output = await compile("./examples/test/locals.lo");
-
-        const program = await loadWasm(output);
-        assert.deepEqual(program.sub(5, 3), 2);
     });
 
     it("compiles else-if.lo", async () => {
@@ -1018,14 +1018,14 @@ async function commandTest() {
         describe("compiler matches initial", () => {
             const files = [
                 "examples/test/42.lo",
+                "examples/test/hex-and-shifts.lo",
                 "examples/test/add.lo",
+                "examples/test/locals.lo",
                 "examples/test/short-circuit.lo",
                 "examples/test/factorial.lo",
                 "examples/test/nested-fn.lo",
                 "examples/test/include.lo",
-                // "examples/test/hex-and-shifts.lo",
-                // "examples/test/locals.lo",
-                // "examples/test/else-if.lo",
+                "examples/test/else-if.lo",
                 // "examples/test/import.lo",
                 // "examples/test/demos/hello-world-raw.lo",
                 // "examples/test/globals.lo",

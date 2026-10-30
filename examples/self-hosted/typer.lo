@@ -661,7 +661,8 @@ fn Typer::type_code_block(
         }
 
         if expr_type.equals(Type::Never) {
-            // TODO: port
+            diverges = true
+            diverges_naturally = diverges_naturally || Typer::is_naturally_divergent(expr)
         }
     }
 
@@ -897,7 +898,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         // TODO: port
         if match IfCond::Expr(cond_expr) = if_expr.cond {
-            let _ = self.type_code_expr_and_load(ctx, *cond_expr)
+            self.report_if_err!(self.type_code_expr_and_load(ctx, *cond_expr))
         }
 
         let then_type = self.type_code_block(then_ctx, &if_expr.then_block, true)
@@ -907,8 +908,15 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
             else_type = self.type_code_block(else_ctx, else_block, true)
         }
+        if match ElseBlock::ElseIf(code_expr) = if_expr.else_block {
+            let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
 
-        // TODO: port
+            self.report_if_err!(self.type_code_expr(else_ctx, *code_expr))
+            let type_id = self.load_type(else_ctx, *code_expr)
+            if type_id != null {
+                else_type = self.get_type(*type_id)
+            }
+        }
 
         if then_type.equals(Type::Never) && else_type.equals(Type::Never) {
             self.store_type(ctx, if_expr.id, Type::Never)
@@ -963,6 +971,12 @@ fn Typer::get_binary_op_kind(
         }
         if op_tag == InfixOpTag::Or {
             return Ok(WasmBinaryOpKind::I32_OR)
+        }
+        if op_tag == InfixOpTag::ShiftRight {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_SHR_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_SHR_U)
         }
     }
 
@@ -1356,6 +1370,12 @@ fn Typer::get_type(&self, type_id: TypeId): Type {
     return self.registry.get_type(type_id)
 }
 
+inline fn Typer::report_if_err!(&self, res: infer(T)) {
+    if res.err as u32 != 0 {
+        self.report_error(res.err)
+    }
+}
+
 fn Typer::report_error(&self, err: &Error) {
     self.reporter.error(err)
 }
@@ -1387,6 +1407,25 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
 
 fn Typer::align(value: u32, alignment: u32): u32 {
     return (value + alignment - 1) / alignment * alignment
+}
+
+fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
+    // TODO: port
+
+    if match CodeExpr::If(_) = expr {
+        return false
+    }
+
+    if match CodeExpr::Return(_) = expr {
+        return true
+    }
+
+    if match CodeExpr::IntrinsicCall(intrinsic) = expr {
+        return intrinsic.fn_name.repr.equals("unreachable")
+    }
+
+    // TODO: port
+    todo!()
 }
 
 type IncludeInfo = struct {
