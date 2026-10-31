@@ -2,7 +2,9 @@
     "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
     "comment": "adapted from https://github.com/dustypomerleau/rust-syntax/blob/main/syntaxes/rust.tmLanguage.json",
     "name": "lo",
-    "fileTypes": ["lo"],
+    "fileTypes": [
+        "lo"
+    ],
     "scopeName": "source.lo",
     "patterns": [
         {
@@ -150,7 +152,6 @@
                     "name": "comment.line.double-slash.lo",
                     "match": "\\s*//.*"
                 },
-
                 {
                     "comment": "expression continuation",
                     "name": "comment.baskslash.continue.lo",
@@ -577,7 +578,7 @@
                 {
                     "comment": "other keywords",
                     "name": "keyword.other.lo",
-                    "match": "\\b(as|in|typeof|use|export|import|from|memory|defer|sizeof|include)\\b"
+                    "match": "\\b(as|in|typeof|use|export|import|from|defer|sizeof)\\b"
                 },
                 {
                     "comment": "fn",
