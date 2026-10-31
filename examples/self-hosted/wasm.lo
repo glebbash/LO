@@ -88,6 +88,7 @@ type WasmInstr = enum (&void) {
     Unreachable,
     I32Const(&WasmInstrI32Const),
     Return,
+    UnaryOp(&WasmInstrUnaryOp),
     BinaryOp(&WasmInstrBinaryOp),
     LocalGet(&WasmInstrLocalGet),
     LocalSet(&WasmInstrLocalSet),
@@ -98,6 +99,8 @@ type WasmInstr = enum (&void) {
     BlockStart(&WasmInstrBlockStart),
     Else,
     BlockEnd,
+    Branch(&WasmInstrBranch),
+    BranchIf(&WasmInstrBranchIf),
     Call(&WasmInstrCall),
     Drop,
     I32WrapI64,
@@ -142,8 +145,20 @@ type WasmInstrBlockStart = struct {
     block_type: WasmBlockType,
 }
 
+type WasmInstrUnaryOp = struct {
+    kind: WasmUnaryOpKind,
+}
+
 type WasmInstrBinaryOp = struct {
     kind: WasmBinaryOpKind,
+}
+
+type WasmInstrBranch = struct {
+    label_index: u32,
+}
+
+type WasmInstrBranchIf = struct {
+    label_index: u32,
 }
 
 type WasmInstrCall = struct {
@@ -688,6 +703,23 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
 
     if match WasmInstr::BlockEnd(_) = instr {
         WasmModule::write_u8(out, 0x0Bu8)
+        return
+    }
+
+    if match WasmInstr::Branch(branch) = instr {
+        WasmModule::write_u8(out, 0x0Cu8)
+        WasmModule::write_u32(out, branch.label_index)
+        return
+    }
+
+    if match WasmInstr::BranchIf(branch_if) = instr {
+        WasmModule::write_u8(out, 0x0Du8)
+        WasmModule::write_u32(out, branch_if.label_index)
+        return
+    }
+
+    if match WasmInstr::UnaryOp(unary_op) = instr {
+        WasmModule::write_u8(out, unary_op.kind as u8)
         return
     }
 

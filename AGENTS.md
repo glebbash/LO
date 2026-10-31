@@ -46,6 +46,7 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
 - **`for i in a..b` evaluates `b` once**, into a hidden local, before the loop starts (see `CodeExpr::For` / `ForExprIterator::Range` in `src/codegen.rs`). Safe to write `for i in 0..v.len` even while appending to `v` inside the loop — new items are never visited.
 - **`at!` returns a pointer; `as u32` on it casts the address.** Do not use `v.at!(i)` where you want the value (e.g. `locals_ids.at!(i)` as an index). Use `get!` for primitive items.
 - **No autoconversion between a value and `&value` — check the callee's signature before passing either.** Passing a `T` where `&T` is wanted (or back) is a type error, not a coercion. Wasm locals aren't addressable (no address-of a plain `let`/param the way a stack slot in a real machine has one), so when you need a `&T` from a value you don't already have a pointer to, use `ref!(value)` (or `tmp_alloc!<T>()` and assign into it), which spills it to the explicit stack region in linear memory and frees it on scope exit. See `ref!`/`tmp_alloc!` in `examples/lib/std.lo` and their use, e.g. `ref!(TypeLayout::new())` in `examples/self-hosted/typer.lo`.
+  - `.` always loads. `&foo.bar.baz` is still valid when `foo` is a pointer: `&` on a (nested) dot-expression just skips the final dereference, giving you a pointer to the field instead of its value — it chains through any number of `.`s, not just one. E.g. `&for_expr.item.repr` in `examples/self-hosted/typer.lo` (passing a `str` field as `&str`).
 - **`Abort code N`:** look up N in `examples/lib/std.lo` (`AbortCode`). 4 = `VEC_OUT_OF_BOUNDS`. The stack trace shows function names only, not call sites, so bisect with temporary prints (`stderr_writeln("A")`). Remove them afterwards.
 - **No `as_str` on `str`.** `Registry::fmt` is still a stub that returns `"<?>"`, so printing a type gives `<?>`.
 - **`Type::equals` is partial** (Never, Void, Bool, U32 only). Extend it when you compare a new type; otherwise comparisons return false silently.
@@ -69,3 +70,5 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
 ## Reporting back
 
 After finishing a sample, don't recap the changes mechanically — the user reads the diff. Report only: issues/surprises hit along the way, anything worth adding to this file's notes (gotchas, debugging recipe), and any feedback on the process. If none, say so briefly.
+
+When pointing at something worth looking at (an oddity, a bug, a spot to double-check), always give `file:line` (or a line range) for every location mentioned, both Rust and `.lo` sides where relevant — not just a function name or a description. The user needs to jump straight there.

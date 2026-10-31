@@ -584,6 +584,176 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::While(while_expr) = expr {
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::Block,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::Loop,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        if while_expr.cond != null {
+            self.codegen(ctx, instrs, *while_expr.cond)
+
+            instrs.push!(WasmInstr::UnaryOp(
+                self.wasm_module.arena.new!(WasmInstrUnaryOp { kind: WasmUnaryOpKind::I32_EQZ }),
+            ))
+            instrs.push!(WasmInstr::BranchIf(
+                self.wasm_module.arena.new!(WasmInstrBranchIf { label_index: 1 }),
+            ))
+        }
+
+        self.enter_scope(ctx, ScopeKind::Loop)
+        self.codegen_code_block(ctx, instrs, &while_expr.body)
+        self.exit_scope(ctx)
+
+        // implicit continue
+        instrs.push!(WasmInstr::Branch(
+            self.wasm_module.arena.new!(WasmInstrBranch { label_index: 0 }),
+        ))
+
+        instrs.push!(WasmInstr::BlockEnd)
+        instrs.push!(WasmInstr::BlockEnd)
+        return
+    }
+
+    if match CodeExpr::For(for_expr) = expr {
+        let item_local = self.get_local_info(ctx, for_expr.item.id, for_expr.item.loc)
+        let item_type_id = item_local.var_type_id
+
+        self.enter_scope(ctx, ScopeKind::ForLoop)
+
+        let counter_type_id = item_type_id
+        let counter_local_index = 0
+        let range_end_local_index = 0
+        let item_local_index = u32::MAX
+        let step = 1 as i32
+
+        if match ForExprIterator::Range(range) = for_expr.iterator {
+            counter_type_id = item_local.var_type_id
+            counter_local_index = item_local.local_index
+
+            range_end_local_index = self.define_unnamed_local(ctx, counter_type_id)
+
+            self.codegen(ctx, instrs, range.start)
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: counter_local_index }),
+            ))
+
+            self.codegen(ctx, instrs, range.end)
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: range_end_local_index }),
+            ))
+        }
+
+        // TODO: port ForExprIterator::Segment
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::Block,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::Loop,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        // break if counter is equal to end
+        instrs.push!(WasmInstr::LocalGet(
+            self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: counter_local_index }),
+        ))
+        instrs.push!(WasmInstr::LocalGet(
+            self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: range_end_local_index }),
+        ))
+        let is_wide_result = Typer::is_wide_int(self.get_type(counter_type_id))
+        if is_wide_result.ok {
+            // TODO: port
+            todo!()
+        } else {
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_EQ }),
+            ))
+        }
+        instrs.push!(WasmInstr::BranchIf(
+            self.wasm_module.arena.new!(WasmInstrBranchIf { label_index: 1 }),
+        ))
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::Block,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        // item = load item_type at counter
+        if item_local_index != u32::MAX {
+            // TODO: port
+        }
+
+        self.codegen_code_block(ctx, instrs, &for_expr.body)
+
+        instrs.push!(WasmInstr::BlockEnd)
+
+        // increment counter
+        instrs.push!(WasmInstr::LocalGet(
+            self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: counter_local_index }),
+        ))
+        if is_wide_result.ok {
+            // TODO: port
+            todo!()
+        } else {
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: step }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_ADD }),
+            ))
+        }
+        self.codegen_local_set(instrs, self.get_type(counter_type_id), counter_local_index)
+
+        // implicit continue
+        instrs.push!(WasmInstr::Branch(
+            self.wasm_module.arena.new!(WasmInstrBranch { label_index: 0 }),
+        ))
+
+        instrs.push!(WasmInstr::BlockEnd)
+
+        instrs.push!(WasmInstr::BlockEnd)
+
+        self.exit_scope(ctx)
+        return
+    }
+
+    if match CodeExpr::Break(break_expr) = expr {
+        let expr_info = self.get_expr_info(ctx, break_expr.id, break_expr.loc)
+        let break_info = self.registry.breaks.at!(expr_info)
+
+        instrs.push!(WasmInstr::Branch(
+            self.wasm_module.arena.new!(WasmInstrBranch { label_index: break_info.label_index }),
+        ))
+        return
+    }
+
+    if match CodeExpr::Continue(continue_expr) = expr {
+        let expr_info = self.get_expr_info(ctx, continue_expr.id, continue_expr.loc)
+        let break_info = self.registry.breaks.at!(expr_info)
+
+        instrs.push!(WasmInstr::Branch(
+            self.wasm_module.arena.new!(WasmInstrBranch { label_index: break_info.label_index }),
+        ))
+        return
+    }
+
     // TODO: port
 
     todo!()

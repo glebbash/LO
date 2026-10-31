@@ -2615,8 +2615,6 @@ impl Typer {
                 let ctx = self.child_ctx(ctx, ScopeKind::ForLoop);
 
                 if let Some(item_type_id) = item_type_id {
-                    self.store_expr_info(ctx, for_expr.item.id, self.registry.value_info.len());
-
                     self.define_local(
                         ctx,
                         for_expr.item.repr,

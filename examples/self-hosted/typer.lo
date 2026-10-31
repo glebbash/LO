@@ -1120,10 +1120,10 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         // TODO: port
         let result_type_id = lhs_type_id
-        if infix_op.op_tag == InfixOpTag::Less || infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
+        if infix_op.op_tag == InfixOpTag::Equal || infix_op.op_tag == InfixOpTag::NotEqual || infix_op.op_tag == InfixOpTag::Less || infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
             result_type_id = self.intern_type(Type::Bool)
         }
-        if infix_op.op_tag == InfixOpTag::AddAssign || infix_op.op_tag == InfixOpTag::MulAssign {
+        if infix_op.op_tag == InfixOpTag::AddAssign || infix_op.op_tag == InfixOpTag::SubAssign || infix_op.op_tag == InfixOpTag::MulAssign {
             result_type_id = self.intern_type(Type::Void)
         }
 
@@ -1242,6 +1242,178 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         } else {
             self.store_type(ctx, if_expr.id, Type::Void)
         }
+        return Ok()
+    }
+
+    if match CodeExpr::While(while_expr) = expr {
+        let loop_ctx = self.child_ctx(ctx, ScopeKind::Loop)
+        let _ = self.type_code_block(loop_ctx, &while_expr.body, true)
+
+        if while_expr.cond != null {
+            let cond_type = self.type_code_expr_and_load(ctx, *while_expr.cond)?
+
+            if !self.get_type(cond_type).equals(Type::Bool) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid condition type: ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(cond_type)))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(Type::Bool))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: (*while_expr.cond).loc(),
+                }))
+            }
+        }
+
+        self.store_type(ctx, while_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::For(for_expr) = expr {
+        let item_type_id = u32::MAX
+
+        if match ForExprIterator::Range(range) = for_expr.iterator {
+            let start_result = self.type_code_expr_and_load(ctx, range.start)
+            if start_result.err as u32 != 0 {
+                self.report_error(start_result.err)
+            } else {
+                item_type_id = start_result.ok
+            }
+
+            let range_end_type_id = u32::MAX
+            let end_result = self.type_code_expr_and_load(ctx, range.end)
+            if end_result.err as u32 != 0 {
+                self.report_error(end_result.err)
+            } else {
+                range_end_type_id = end_result.ok
+            }
+
+            if item_type_id != u32::MAX {
+                let is_wide_result = Typer::is_wide_int(self.get_type(item_type_id))
+                if is_wide_result.err as u32 != 0 {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid counter. Type must be an integer, got ",
+                    )
+                    message.push_str(self.registry.fmt(self.get_type(item_type_id)))
+                    message.push_str(" instead")
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: range.start.loc(),
+                    }))
+                }
+            }
+
+            if item_type_id != u32::MAX && range_end_type_id != u32::MAX && item_type_id != range_end_type_id {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid range end type: ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(range_end_type_id)))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(self.get_type(item_type_id)))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: range.end.loc(),
+                }))
+            }
+        }
+
+        // TODO: port ForExprIterator::Segment
+
+        let ctx = self.child_ctx(ctx, ScopeKind::ForLoop)
+
+        if item_type_id != u32::MAX {
+            let _ = self.define_local(
+                ctx,
+                &for_expr.item.repr,
+                item_type_id,
+                for_expr.item.loc,
+                for_expr.item.id,
+                true,
+            )
+        }
+
+        let _ = self.type_code_block(ctx, &for_expr.body, true)
+
+        self.store_type(ctx, for_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::Break(break_expr) = expr {
+        let label_index = 1 // 0 = loop, 1 = loop wrapper block
+
+        let current_ctx = ctx
+        loop {
+            if current_ctx.kind == ScopeKind::Loop {
+                break
+            }
+            if current_ctx.kind == ScopeKind::ForLoop {
+                label_index += 1
+                break
+            }
+            if current_ctx.kind == ScopeKind::Block {
+                label_index += 1
+            }
+            if current_ctx.kind == ScopeKind::Function || current_ctx.kind == ScopeKind::Global {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Cannot break outside of a loop"),
+                    loc: break_expr.loc,
+                }))
+            }
+
+            if current_ctx.parent == null {
+                break
+            }
+            current_ctx = current_ctx.parent
+        }
+
+        self.store_expr_info(ctx, break_expr.id, self.registry.breaks.len)
+        self.registry.breaks.push!(BreakInfo {
+            label_index: label_index,
+            expr_type_id: self.intern_type(Type::Never),
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::Continue(continue_expr) = expr {
+        let label_index = 0 // 0 = loop, 1 = loop wrapper block
+
+        let current_ctx = ctx
+        loop {
+            if current_ctx.kind == ScopeKind::Loop || current_ctx.kind == ScopeKind::ForLoop {
+                break
+            }
+            if current_ctx.kind == ScopeKind::Block {
+                label_index += 1
+            }
+            if current_ctx.kind == ScopeKind::Function || current_ctx.kind == ScopeKind::Global {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Cannot continue outside of a loop"),
+                    loc: continue_expr.loc,
+                }))
+            }
+
+            if current_ctx.parent == null {
+                break
+            }
+            current_ctx = current_ctx.parent
+        }
+
+        self.store_expr_info(ctx, continue_expr.id, self.registry.breaks.len)
+        self.registry.breaks.push!(BreakInfo {
+            label_index: label_index,
+            expr_type_id: self.intern_type(Type::Never),
+        })
+
         return Ok()
     }
 
@@ -1369,6 +1541,9 @@ fn Typer::get_compound_assignment_base_op(&self, op_tag: InfixOpTag): Result(Inf
     if op_tag == InfixOpTag::AddAssign {
         return Ok(InfixOpTag::Add)
     }
+    if op_tag == InfixOpTag::SubAssign {
+        return Ok(InfixOpTag::Sub)
+    }
     if op_tag == InfixOpTag::MulAssign {
         return Ok(InfixOpTag::Mul)
     }
@@ -1397,6 +1572,12 @@ fn Typer::get_binary_op_kind(
 
     // TODO: port
     if wasm_op_type == WasmType::I32 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::I32_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::I32_NE)
+        }
         if op_tag == InfixOpTag::Less {
             if signed {
                 return Ok(WasmBinaryOpKind::I32_LT_S)
@@ -2002,6 +2183,10 @@ fn Typer::align(value: u32, alignment: u32): u32 {
 fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
     // TODO: port
 
+    if match CodeExpr::IntLiteral(_) = expr {
+        return false
+    }
+
     if match CodeExpr::Ident(_) = expr {
         return false
     }
@@ -2014,7 +2199,23 @@ fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
         return false
     }
 
+    if match CodeExpr::While(_) = expr {
+        return false
+    }
+
+    if match CodeExpr::For(_) = expr {
+        return false
+    }
+
     // TODO: port
+
+    if match CodeExpr::Break(_) = expr {
+        return true
+    }
+
+    if match CodeExpr::Continue(_) = expr {
+        return true
+    }
 
     if match CodeExpr::Return(_) = expr {
         return true

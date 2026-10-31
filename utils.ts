@@ -255,8 +255,8 @@ async function commandTest() {
         assert.strictEqual(result, 69);
     });
 
-    it("compiles loop.lo", async () => {
-        const output = await compile("./examples/test/loop.lo");
+    it("compiles while-loop.lo", async () => {
+        const output = await compile("./examples/test/while-loop.lo");
 
         const program = await loadWasm(output);
         const result = program.main();
@@ -1029,8 +1029,8 @@ async function commandTest() {
                 "examples/test/import.lo",
                 "examples/test/demos/hello-world-raw.lo",
                 "examples/test/globals.lo",
-                // "examples/test/loop.lo",
-                // "examples/test/for-loop.lo",
+                "examples/test/while-loop.lo",
+                "examples/test/for-loop.lo",
                 // "examples/test/for-each-loop.lo",
                 // "examples/test/methods.lo",
                 // "examples/test/nested-if-break.lo",
