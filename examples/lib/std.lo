@@ -192,6 +192,8 @@ let heap::FIRST_BLOCK = null as &?heap::Block
 
 let heap::CURRENT_BLOCK = null as &?heap::Block
 
+let heap::FREE_BLOCKS = 0
+
 inline fn heap::new!(value: infer(T)): &T {
     let ptr = heap::alloc!<T>()
     *ptr = value
@@ -210,10 +212,13 @@ inline fn heap::alloc_many!<T>(count: u32): &[]T {
 fn heap::alloc(size: u32): &void {
     size = mem::align(size)
 
-    let free_block = heap::find_free_block(size)
-    if free_block != null {
-        free_block.used = true
-        return free_block.data!()
+    if heap::FREE_BLOCKS != 0 {
+        let free_block = heap::find_free_block(size)
+        if free_block != null {
+            free_block.used = true
+            heap::FREE_BLOCKS -= 1
+            return free_block.data!()
+        }
     }
 
     if heap::CURRENT_BLOCK == null {
@@ -244,6 +249,7 @@ fn heap::alloc(size: u32): &void {
 fn heap::free(ptr: &void) {
     let block = heap::get_block(ptr)
     block.used = false
+    heap::FREE_BLOCKS += 1
 }
 
 fn heap::get_block(ptr: &void): &heap::Block {
