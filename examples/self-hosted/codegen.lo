@@ -78,27 +78,37 @@ type CodegenModuleInfo = struct {
     ctx: ExprContext,
 }
 
-type CodeGenerator = struct {
+type Codegen = struct {
     // context
     registry: &Registry,
 
     // state
     wasm_fn_types: &Vec(WasmFnType),
+    module_info: &Vec(CodegenModuleInfo),
 
     // output
     wasm_module: &WasmModule,
 }
 
-fn CodeGenerator::new(registry: &Registry): &CodeGenerator {
-    return heap::new!(CodeGenerator {
+fn Codegen::new(registry: &Registry): &Codegen {
+    return heap::new!(Codegen {
         registry: registry,
         wasm_fn_types: Vec::new!<WasmFnType>(),
+        module_info: Vec::new!<CodegenModuleInfo>(),
         wasm_module: WasmModule::new(),
     })
 }
 
-fn CodeGenerator::codegen_all(&self) {
-    // TODO: port
+fn Codegen::codegen_all(&self) {
+    for module in self.registry.modules.iter!() {
+        self.module_info.push!(CodegenModuleInfo {
+            scope_stack: Vec::new!<Scope>(),
+            ctx: *ExprContext::new(module.id, null),
+        })
+
+        self.module_info.at!(self.module_info.len - 1) \
+            .scope_stack.push!(Scope::new(ScopeKind::Global))
+    }
 
     let fn_imports_count = 0
     for fn_info in self.registry.functions.iter!() {
@@ -148,8 +158,17 @@ fn CodeGenerator::codegen_all(&self) {
             fn_info.wasm_fn_index = wasm_fn_index
 
             wasm_fn_index += 1
-        } else if match FnSource::Host(_) = fn_info.source {
-            // TODO: port
+        } else if match FnSource::Host(host_info) = fn_info.source {
+            fn_info.wasm_fn_index = wasm_import_fn_index
+
+            self.wasm_module.imports.push!(WasmImport {
+                module_name: host_info.module_name.clone(),
+                item_name: String::from_str(host_info.external_fn_name),
+                item_desc: WasmImportDesc::Func(self.wasm_module.arena.new!(WasmImportDescFn {
+                    type_index: fn_type_index,
+                })),
+            })
+            wasm_import_fn_index += 1
         } else {
             @unreachable()
         }
@@ -174,11 +193,11 @@ fn CodeGenerator::codegen_all(&self) {
         let ctx = ExprContext::new(guest_info.module_id, ref!(guest_info.lo_fn_index))
         let wasm_expr = WasmExpr { instrs: Vec::new!<WasmInstr>() }
 
-        // TODO: port
+        self.enter_scope(ctx, ScopeKind::Function)
 
         self.codegen_code_block(ctx, wasm_expr.instrs, guest_info.body)
 
-        // TODO: port
+        self.exit_scope(ctx)
 
         let wasm_locals_flat = Vec::new!<WasmType>()
 
@@ -235,10 +254,43 @@ fn CodeGenerator::codegen_all(&self) {
 
     // TODO: port
 
+    if self.registry.memory_info != null {
+        let memory = *self.registry.memory_info
+
+        let min = 0
+        if memory.min_pages != null {
+            min = *memory.min_pages
+        }
+
+        let limits = WasmLimits {
+            min: min,
+            max: null,
+        }
+
+        if memory.imported_from != null {
+            self.wasm_module.imports.push!(WasmImport {
+                module_name: (*memory.imported_from).clone(),
+                item_name: String::from_str("memory"),
+                item_desc: WasmImportDesc::Memory(self.wasm_module.arena.new!(limits)),
+            })
+        } else {
+            self.wasm_module.memories.push!(limits)
+        }
+
+        if memory.exported {
+            self.wasm_module.exports.push!(WasmExport {
+                export_type: WasmExportType::Mem,
+                export_name: String::from_str("memory"),
+                exported_item_index: 0,
+            })
+        }
+    }
+
+    self.wasm_module.datas.append!(self.registry.datas)
     self.wasm_module.types.append!(self.wasm_fn_types)
 }
 
-fn CodeGenerator::codegen_code_block(
+fn Codegen::codegen_code_block(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
@@ -258,7 +310,7 @@ fn CodeGenerator::codegen_code_block(
     }
 }
 
-fn CodeGenerator::codegen(
+fn Codegen::codegen(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
@@ -287,13 +339,35 @@ fn CodeGenerator::codegen(
         return
     }
 
+    if match CodeExpr::StringLiteral(str_literal) = expr {
+        let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc)
+        let stored_bytes = self.registry.stored_bytes.at!(expr_info)
+
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.ptr as i32 }),
+        ))
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
+        ))
+        return
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         if let_expr.is_inline {
             // was handled in typer
             return
         }
 
-        // TODO: port
+        let var_type = self.get_expr_type(ctx, let_expr.value)
+
+        if let_expr.name.repr.equals("_") {
+            self.codegen(ctx, instrs, let_expr.value)
+
+            for i in 0..Typer::count_primitive_components(self.registry, var_type) {
+                instrs.push!(WasmInstr::Drop)
+            }
+            return
+        }
 
         let local = self.get_local_info(ctx, let_expr.name.id, let_expr.name.loc)
         self.codegen(ctx, instrs, let_expr.value)
@@ -390,6 +464,41 @@ fn CodeGenerator::codegen(
         return
     }
 
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            let var = self.var_from_expr(ctx, expr)
+            self.codegen_var_get(ctx, instrs, var)
+            return
+        }
+
+        // TODO: port
+        todo!()
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        self.codegen(ctx, instrs, cast.expr)
+
+        let castee_type = self.get_expr_type(ctx, cast.expr)
+        let casted_to_type = self.get_type_expr_value(ctx, cast.casted_to)
+
+        let cast_instr = Codegen::get_cast_instr(castee_type, casted_to_type)
+        if cast_instr.err as u32 == 0 {
+            instrs.push!(cast_instr.ok)
+        }
+
+        return
+    }
+
+    if match CodeExpr::Assign(assign) = expr {
+        let var = self.var_from_expr(ctx, assign.lhs)
+
+        self.codegen_var_set_prepare(instrs, var)
+        self.codegen(ctx, instrs, assign.rhs)
+        self.codegen_var_set(ctx, instrs, var)
+
+        return
+    }
+
     if match CodeExpr::FnCall(call) = expr {
         let expr_info = self.get_expr_info(ctx, call.id, call.loc)
         let call_info = self.registry.call_info.at!(expr_info)
@@ -453,11 +562,11 @@ fn CodeGenerator::codegen(
     todo!()
 }
 
-fn CodeGenerator::codegen_match_header(&self) {
+fn Codegen::codegen_match_header(&self) {
     todo!()
 }
 
-fn CodeGenerator::codegen_fn_call(
+fn Codegen::codegen_fn_call(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
@@ -479,19 +588,19 @@ fn CodeGenerator::codegen_fn_call(
     ))
 }
 
-fn CodeGenerator::codegen_inline_fn_call(&self) {
+fn Codegen::codegen_inline_fn_call(&self) {
     todo!()
 }
 
-fn CodeGenerator::codegen_catch(&self) {
+fn Codegen::codegen_catch(&self) {
     todo!()
 }
 
-fn CodeGenerator::get_block_inout_type(&self) {
+fn Codegen::get_block_inout_type(&self) {
     todo!()
 }
 
-fn CodeGenerator::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
+fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
     // TODO: port
 
     if match CodeExpr::Ident(var_name) = expr {
@@ -509,6 +618,35 @@ fn CodeGenerator::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarIn
             }))
         }
 
+        if value_info.kind == ValueKind::Const {
+            let const_def = self.registry.constants.at!(value_info.col_index)
+
+            return VarInfo::Const(heap::new!(VarInfoConst {
+                const_def: const_def,
+            }))
+        }
+
+        todo!()
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            let addr_type = self.get_expr_type(ctx, prefix_op.expr)
+
+            match Type::Pointer(ptr) = addr_type else {
+                @unreachable()
+            }
+
+            let address_instrs = Vec::new!<WasmInstr>()
+            self.codegen(ctx, address_instrs, prefix_op.expr)
+
+            return VarInfo::Stored(heap::new!(VarInfoStored {
+                address_instrs: address_instrs,
+                offset: 0,
+                var_type_id: ptr.pointee,
+            }))
+        }
+
         todo!()
     }
 
@@ -517,7 +655,7 @@ fn CodeGenerator::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarIn
     todo!()
 }
 
-fn CodeGenerator::codegen_var_get(
+fn Codegen::codegen_var_get(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
@@ -528,12 +666,52 @@ fn CodeGenerator::codegen_var_get(
         return
     }
 
+    if match VarInfo::Const(const_var) = var {
+        self.enter_scope(ctx, ScopeKind::InlineFn)
+        self.current_scope(ctx).expr_id_offset = const_var.const_def.inner_expr_id_offset
+
+        self.codegen(ctx, instrs, const_var.const_def.expr)
+
+        self.exit_scope(ctx)
+        return
+    }
+
+    if match VarInfo::Stored(stored) = var {
+        let loads = Vec::new!<WasmInstr>()
+        self.codegen_load_or_store(loads, self.get_type(stored.var_type_id), stored.offset, false)
+
+        if loads.len == 0 {
+            return
+        }
+
+        instrs.append!(stored.address_instrs)
+
+        if loads.len > 1 {
+            let addr_local_index = self.create_or_get_addr_local(ctx)
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: addr_local_index }),
+            ))
+
+            loads.reverse()
+            for load in loads.iter!() {
+                instrs.push!(WasmInstr::LocalGet(
+                    self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: addr_local_index }),
+                ))
+                instrs.push!(load)
+            }
+        } else {
+            instrs.append!(loads)
+        }
+
+        return
+    }
+
     // TODO: port
 
     todo!()
 }
 
-fn CodeGenerator::codegen_local_get(
+fn Codegen::codegen_local_get(
     &self,
     instrs: &Vec(WasmInstr),
     local_type: Type,
@@ -546,13 +724,49 @@ fn CodeGenerator::codegen_local_get(
     }
 }
 
-fn CodeGenerator::codegen_var_set_prepare(&self, instrs: &Vec(WasmInstr), var: VarInfo) {
-    // TODO: port
+fn Codegen::codegen_var_set_prepare(&self, instrs: &Vec(WasmInstr), var: VarInfo) {
+    if match VarInfo::Stored(stored) = var {
+        if Typer::count_primitive_components(self.registry, self.get_type(stored.var_type_id)) == 0 {
+            return
+        }
+
+        instrs.append!(stored.address_instrs)
+    }
 }
 
-fn CodeGenerator::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), var: VarInfo) {
+fn Codegen::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), var: VarInfo) {
     if match VarInfo::Local(local) = var {
         self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index)
+        return
+    }
+
+    if match VarInfo::Stored(stored) = var {
+        let stores = Vec::new!<WasmInstr>()
+        self.codegen_load_or_store(stores, self.get_type(stored.var_type_id), stored.offset, true)
+
+        if stores.len > 1 {
+            let tmp_value_local_index = self.define_unnamed_local(ctx, stored.var_type_id)
+            self.codegen_local_set(instrs, self.get_type(stored.var_type_id), tmp_value_local_index)
+
+            let addr_local_index = self.create_or_get_addr_local(ctx)
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: addr_local_index }),
+            ))
+
+            stores.reverse()
+            for i in 0..stores.len {
+                instrs.push!(WasmInstr::LocalGet(
+                    self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: addr_local_index }),
+                ))
+                instrs.push!(WasmInstr::LocalGet(
+                    self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: tmp_value_local_index + i }),
+                ))
+                instrs.push!(stores.get!(i))
+            }
+        } else {
+            instrs.append!(stores)
+        }
+
         return
     }
 
@@ -561,7 +775,7 @@ fn CodeGenerator::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmIns
     todo!()
 }
 
-fn CodeGenerator::codegen_local_set(&self, instrs: &Vec(WasmInstr), local_type: Type, local_index: u32) {
+fn Codegen::codegen_local_set(&self, instrs: &Vec(WasmInstr), local_type: Type, local_index: u32) {
     let i = Typer::count_primitive_components(self.registry, local_type)
     while i > 0 {
         i = i - 1
@@ -571,11 +785,70 @@ fn CodeGenerator::codegen_local_set(&self, instrs: &Vec(WasmInstr), local_type: 
     }
 }
 
-fn CodeGenerator::codegen_load_or_store(&self) {
+fn Codegen::codegen_load_or_store(
+    &self,
+    instrs: &Vec(WasmInstr),
+    pointee_type: Type,
+    offset: u32,
+    is_store: bool,
+) {
+    if match Type::Never(_) = pointee_type {
+        return // noop
+    }
+    if match Type::Void(_) = pointee_type {
+        return // noop
+    }
+
+    if match Type::U32(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::Pointer(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::Seg(seg) = pointee_type {
+        let ptr_type = Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: true,
+            is_nullable: false,
+        }))
+        self.codegen_load_or_store(instrs, Type::U32, offset + 4, is_store)
+        self.codegen_load_or_store(instrs, ptr_type, offset, is_store)
+        return
+    }
+
+    // TODO: port
     todo!()
 }
 
-fn CodeGenerator::get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind_loc: Loc): VarInfoLocal {
+fn Codegen::get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind_loc: Loc): VarInfoLocal {
     let expr_info = self.get_expr_info(ctx, bind_id, bind_loc)
     let value_info = self.registry.value_info.at!(expr_info)
     let local_info = self.registry.locals.at!(value_info.col_index)
@@ -586,19 +859,25 @@ fn CodeGenerator::get_local_info(&self, ctx: &ExprContext, bind_id: ExprId, bind
     }
 }
 
-fn CodeGenerator::define_unnamed_local(&self) {
+fn Codegen::define_unnamed_local(&self, ctx: &ExprContext, local_type_id: TypeId): u32 {
+    return self.registry.add_local(*ctx.fn_index, null, local_type_id)
+}
+
+fn Codegen::create_or_get_addr_local(&self, ctx: &ExprContext): u32 {
+    if ctx.addr_local_index != null {
+        return *ctx.addr_local_index
+    }
+
+    let addr_local_index = self.define_unnamed_local(ctx, self.registry.intern_type(Type::U32))
+
+    return addr_local_index
+}
+
+fn Codegen::emit_deferred(&self) {
     todo!()
 }
 
-fn CodeGenerator::create_or_get_addr_local(&self) {
-    todo!()
-}
-
-fn CodeGenerator::emit_deferred(&self) {
-    todo!()
-}
-
-fn CodeGenerator::emit_deferred_for_return(
+fn Codegen::emit_deferred_for_return(
     &self,
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
@@ -606,15 +885,38 @@ fn CodeGenerator::emit_deferred_for_return(
     // TODO: port
 }
 
-fn CodeGenerator::codegen_default_value(&self) {
+fn Codegen::codegen_default_value(&self) {
     todo!()
 }
 
-fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
+fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
+    if match Type::Never(_) = type_ {
+        return
+    }
+    if match Type::Void(_) = type_ {
+        return
+    }
+
     // TODO: port
 
     if match Type::U32(_) = type_ {
         wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    if match Type::Pointer(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    if match Type::Seg(seg) = type_ {
+        let ptr_type = Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: false,
+            is_nullable: false,
+        }))
+        self.lower_type(Type::U32, wasm_types)
+        self.lower_type(ptr_type, wasm_types)
         return
     }
 
@@ -623,23 +925,32 @@ fn CodeGenerator::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
     todo!()
 }
 
-fn CodeGenerator::enter_scope(&self) {
-    todo!()
+fn Codegen::enter_scope(&self, ctx: &ExprContext, scope_type: ScopeKind) {
+    let module = self.module_info.at!(ctx.module_id)
+
+    self.init_scope_from_parent_and_push(module.scope_stack, scope_type)
 }
 
-fn CodeGenerator::exit_scope(&self) {
-    todo!()
+fn Codegen::exit_scope(&self, ctx: &ExprContext) {
+    self.module_info.at!(ctx.module_id).scope_stack.pop()
 }
 
-fn CodeGenerator::current_scope(&self) {
-    todo!()
+fn Codegen::current_scope(&self, ctx: &ExprContext): &Scope {
+    let module = self.module_info.at!(ctx.module_id)
+
+    return module.scope_stack.at!(module.scope_stack.len - 1)
 }
 
-fn CodeGenerator::init_scope_from_parent_and_push(&self) {
-    todo!()
+fn Codegen::init_scope_from_parent_and_push(&self, scope_stack: &Vec(Scope), scope_type: ScopeKind) {
+    let new_scope = Scope::new(scope_type)
+    if scope_stack.len > 0 {
+        let parent = scope_stack.at!(scope_stack.len - 1)
+        new_scope.expr_id_offset = parent.expr_id_offset
+    }
+    scope_stack.push!(new_scope)
 }
 
-fn CodeGenerator::push_wasm_dbg_name_section_locals(
+fn Codegen::push_wasm_dbg_name_section_locals(
     &self,
     output: &Vec(WasmLocalInfo),
     local_index: u32,
@@ -656,38 +967,53 @@ fn CodeGenerator::push_wasm_dbg_name_section_locals(
         return local_index + 1
     }
 
+    if match Type::Pointer(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
     // TODO: port
 
     todo!()
 }
 
-fn CodeGenerator::get_expr_type(&self) {
-    todo!()
+fn Codegen::get_expr_type(&self, ctx: &ExprContext, expr: CodeExpr): Type {
+    let scope = self.current_scope(ctx)
+    let type_id = self.registry.get_expr_type(scope.expr_id_offset, expr)
+    if type_id == null {
+        self.registry.reporter.abort_due_to_compiler_bug("Untyped code expression", expr.loc())
+    }
+    return self.get_type(*type_id)
 }
 
-fn CodeGenerator::get_type_expr_value(&self) {
-    todo!()
+fn Codegen::get_type_expr_value(&self, ctx: &ExprContext, expr: TypeExpr): Type {
+    let type_id = self.get_expr_info(ctx, expr.id(), expr.loc())
+    return self.get_type(type_id)
 }
 
-// TODO: port
-fn CodeGenerator::get_expr_info(
+fn Codegen::get_expr_info(
     &self,
     ctx: &ExprContext,
     expr_id: u32,
     expr_loc: Loc,
 ): ExprId {
-    let expr_info = self.registry.get_expr_info(0, expr_id)
+    let scope = self.current_scope(ctx)
+    let expr_info = self.registry.get_expr_info(scope.expr_id_offset, expr_id)
     if expr_info == null {
-        todo!()
+        self.registry.reporter.abort_due_to_compiler_bug("Untyped expression", expr_loc)
     }
 
     return *expr_info
 }
 
-fn CodeGenerator::get_type(&self, type_id: u32): Type {
+fn Codegen::get_type(&self, type_id: u32): Type {
     return self.registry.get_type(type_id)
 }
 
-fn CodeGenerator::get_cast_instr() {
-    todo!()
+fn Codegen::get_cast_instr(casted_from: Type, casted_to: Type): Result(WasmInstr, &VoidError) {
+    // TODO: port
+    return Err(VoidError::VALUE)
 }

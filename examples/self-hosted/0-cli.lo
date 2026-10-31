@@ -72,7 +72,7 @@ export fn _start() {
         wasi::proc_exit(1)
     }
 
-    let codegen = CodeGenerator::new(registry)
+    let codegen = Codegen::new(registry)
     codegen.codegen_all()
 
     if command.equals("compile") {

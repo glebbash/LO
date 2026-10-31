@@ -17,7 +17,7 @@ The port advances one sample at a time. A sample is done when the self-hosted ou
 
 ## Porting rules (the user cares about these)
 
-1. **Port, don't invent.** Open the Rust function and translate it. Keep names, structure and order.
+1. **Port, don't invent.** Open the Rust function and translate it. Keep names, structure and order. If you're unsure a construct (e.g. nesting a helper `fn` inside an `if` block, not just at a function's top level) is supported at the depth Rust uses it, try compiling it before reaching for a workaround — it's a few seconds, and a workaround that silently diverges from Rust's structure is worse than finding out the construct already works. Nested functions do work at arbitrary block depth, confirmed.
 2. **Minimal per sample.** Port only the branches the current sample exercises. Mark the rest with `// TODO: port` and `todo!()`.
 3. **Never end a function with a silent `return` instead of `todo!()`.** A quiet fallback hides bugs. One example: `get_expr_info` returning 0 made an untyped expression silently emit `i32.add`.
 4. **Error messages go in `self.registry.error_arena`**: `String::from_str_in(arena, ...)` / `String::new_in(arena, cap)` and `arena.new!(Error {...})`. Do not use plain `String::from_str` for errors.
@@ -43,6 +43,7 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
 - **`for x in v.iter!()` binds a copy.** `&x.field` then dangles. Use `for &x in v.iter!()` to iterate by reference.
 - **`for i in a..b` evaluates `b` once**, into a hidden local, before the loop starts (see `CodeExpr::For` / `ForExprIterator::Range` in `src/codegen.rs`). Safe to write `for i in 0..v.len` even while appending to `v` inside the loop — new items are never visited.
 - **`at!` returns a pointer; `as u32` on it casts the address.** Do not use `v.at!(i)` where you want the value (e.g. `locals_ids.at!(i)` as an index). Use `get!` for primitive items.
+- **No autoconversion between a value and `&value` — check the callee's signature before passing either.** Passing a `T` where `&T` is wanted (or back) is a type error, not a coercion. Wasm locals aren't addressable (no address-of a plain `let`/param the way a stack slot in a real machine has one), so when you need a `&T` from a value you don't already have a pointer to, use `ref!(value)` (or `tmp_alloc!<T>()` and assign into it), which spills it to the explicit stack region in linear memory and frees it on scope exit. See `ref!`/`tmp_alloc!` in `examples/lib/std.lo` and their use, e.g. `ref!(TypeLayout::new())` in `examples/self-hosted/typer.lo`.
 - **`Abort code N`:** look up N in `examples/lib/std.lo` (`AbortCode`). 4 = `VEC_OUT_OF_BOUNDS`. The stack trace shows function names only, not call sites, so bisect with temporary prints (`stderr_writeln("A")`). Remove them afterwards.
 - **No `as_str` on `str`.** `Registry::fmt` is still a stub that returns `"<?>"`, so printing a type gives `<?>`.
 - **`Type::equals` is partial** (Never, Void, Bool, U32 only). Extend it when you compare a new type; otherwise comparisons return false silently.
@@ -53,6 +54,8 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
 - **Mismatched operand types are errors** (`u32` vs `&u32`). The compiler complaining about the compiler source is the normal way you find this.
 - **Expr info:** every expression the typer visits must `store_expr_info` / `store_type`. If the typer skips a block (e.g. an `else`), codegen reads index 0 and produces plausible-looking but wrong code.
 - **`Registry::get_expr_type`** returns different things by kind: `Ident` → `value_info.type_id`, `InfixOp` → `binary_op_info.result_type_id`, otherwise the raw expr_info.
+- **`catch` must diverge** (`return`/`break`/`@unreachable()`); there is no fallback-value form. To emulate Rust's `self.report_if_err(result)` → `Option<T>` pattern (report on error, keep going with "no value"), don't reach for `catch` — read `result.err`/`result.ok` directly instead, e.g. `if result.err as u32 != 0 { self.report_error(result.err) } else { use(result.ok) }`.
+- **Comparing a `Result`'s `.err` to `null` is a type error**, even though 0/null means "no error" at the ABI level. `.err`'s declared type is the concrete error type (`&Error`, or `&VoidError` which prints as `&u32`), not a nullable pointer, so `== null`/`!= null` on it doesn't typecheck. Cast through `u32` instead: `result.err as u32 != 0`.
 
 ## Debugging recipe
 

@@ -70,7 +70,7 @@ pub extern "C" fn _start() {
         proc_exit(1);
     }
 
-    let mut codegen = CodeGenerator::new(&mut registry);
+    let mut codegen = Codegen::new(&mut registry);
     codegen.codegen_all();
 
     if command == "compile" {

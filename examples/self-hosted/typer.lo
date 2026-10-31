@@ -168,6 +168,12 @@ type TySymbolKind = enum {
     EnumConstructor,
 }
 
+type VariableKind = enum {
+    Readonly,
+    ReadWrite,
+    ReadWriteStored,
+}
+
 type TySymbol = struct {
     ctx_id: u32,
     name: str,
@@ -363,9 +369,51 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
                 })
             }
 
-            if match FnExprValue::ImportFrom(body) = fn_def.value {
-                continue // TODO: port
+            if match FnExprValue::ImportFrom(imported_from) = fn_def.value {
+                let module_name = (*imported_from).get_value(module.source)
+                let method_name = fn_def.decl.fn_name.parts.get!(fn_def.decl.fn_name.parts.len - 1u32)
+                let external_fn_name = method_name.read_span(module.source)
+                let placeholder_fn_output = self.intern_type(Type::Void)
+
+                self.registry.functions.push!(FnInfo {
+                    name: fn_def.decl.fn_name.repr,
+                    type_: FnType {
+                        inputs: Vec::new!<TypeId>(),
+                        output: placeholder_fn_output,
+                    },
+                    params: Vec::new!<FnParameter>(),
+                    source: FnSource::Host(heap::new!(FnSourceHost {
+                        module_name: module_name.clone(),
+                        external_fn_name: external_fn_name,
+                    })),
+                    exported_as: Vec::new!<String>(),
+                    locals_ids: Vec::new!<u32>(),
+                    wasm_fn_index: u32::MAX, // placeholder
+                    wasm_locals_count: 0,
+                    definition_loc: fn_def.decl.fn_name.loc,
+                })
             }
+        }
+
+        if match TopLevelExpr::Let(let_expr) = expr {
+            if let_expr.is_inline {
+                let _ = self.define_symbol(
+                    ctx,
+                    let_expr.name.repr,
+                    TySymbolKind::Const,
+                    let_expr.name.loc,
+                )
+
+                self.registry.constants.push!(ConstDef {
+                    type_id: self.intern_type(Type::Never), // placeholder
+                    expr: let_expr.value,
+                    inner_expr_id_offset: ctx.expr_id_offset,
+                })
+                continue
+            }
+
+            // TODO: port
+            continue
         }
 
         // TODO: port
@@ -428,7 +476,79 @@ fn Typer::resolve_enum_body(&self, enum_def: &EnumDef) {
 }
 
 fn Typer::resolve_str_literal_type(&self) {
-    // TODO: port
+    // fallback
+    self.registry.str_literal_type_id = heap::new!(
+        self.intern_type(Type::Seg(heap::new!(SegType {
+            item: self.intern_type(Type::U8),
+        }))),
+    )
+
+    let slt_def = null as &?TypeExpr
+
+    for module_id in self.registry.module_import_order.iter!() {
+        let ctx = self.module_info.get!(module_id).ctx
+        let module = self.registry.modules.get!(module_id)
+
+        for expr in module.parser.ast.iter!() {
+            if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+                if !intrinsic.fn_name.repr.equals("str_literal_type") {
+                    continue
+                }
+
+                if intrinsic.type_args.len != 1 || intrinsic.args.items.len != 0 {
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: String::from_str_in(
+                            self.registry.error_arena,
+                            "Invalid call, expected signature: @<T>str_literal_type()",
+                        ),
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                if slt_def != null {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot redefine str literal type, first defined at ",
+                    )
+                    message.push_str(
+                        (*slt_def).loc().to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+                slt_def = heap::new!(intrinsic.type_args.get!(0))
+
+                let type_id_result = self.build_type(ctx, *slt_def)
+                if type_id_result.err as u32 != 0 {
+                    self.report_error(type_id_result.err)
+                } else {
+                    let type_id = type_id_result.ok
+                    let slt_components = self.get_primitives(self.get_type(type_id))
+
+                    let expected_components = Vec::new!<Type>()
+                    expected_components.push!(Type::U32)
+                    expected_components.push!(Type::U32)
+
+                    if !Typer::is_noop_cast(slt_components, expected_components) {
+                        self.report_error(self.registry.error_arena.new!(Error {
+                            message: String::from_str_in(
+                                self.registry.error_arena,
+                                "str literal type must be compatible with (u32, u32)",
+                            ),
+                            loc: (*slt_def).loc(),
+                        }))
+                    }
+
+                    self.registry.str_literal_type_id = heap::new!(type_id)
+                }
+            }
+        }
+    }
 }
 
 fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
@@ -453,6 +573,174 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
             }
 
             self.resolve_fn_signature(ctx, fn_def.decl, symbol.col_index)
+        }
+
+        if match TopLevelExpr::Let(let_expr) = expr {
+            let symbol = self.get_symbol(ctx, let_expr.name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+
+            // TODO: port
+
+            let value_type_id = self.type_code_expr_and_load(ctx, let_expr.value) catch err {
+                self.report_error(err)
+                continue
+            }
+
+            if let_expr.is_inline {
+                let const_def = self.registry.constants.at!(symbol.col_index)
+                const_def.type_id = value_type_id
+
+                // TODO: port inspection
+
+                continue
+            }
+
+            // TODO: port
+            continue
+        }
+
+        if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+            if intrinsic.fn_name.repr.equals("use_memory") {
+                if self.registry.memory_info != null {
+                    let existing_memory = *self.registry.memory_info
+
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot redefine memory, first defined at ",
+                    )
+                    message.push_str(
+                        existing_memory.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.loc,
+                    }))
+                    continue
+                }
+
+                if intrinsic.type_args.len != 0 {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                let memory = heap::new!(MemoryInfo {
+                    min_pages: null,
+                    data_start: null,
+                    exported: false,
+                    imported_from: null,
+                    loc: intrinsic.loc,
+                })
+
+                for arg in intrinsic.args.items.iter!() {
+                    if match CodeExpr::Ident(ident) = arg {
+                        if ident.repr.equals("exported") {
+                            memory.exported = true
+                            continue
+                        }
+                    }
+
+                    match CodeExpr::Assign(assign) = arg else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    match CodeExpr::Ident(key) = assign.lhs else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    if key.repr.equals("data_start") {
+                        let const_result = self.get_const_value_or_err(ctx, assign.rhs)
+
+                        let is_bad = true
+                        if const_result.err as u32 == 0 {
+                            if match CodeExpr::IntLiteral(int_lit) = const_result.ok {
+                                if int_lit.tag == null {
+                                    memory.data_start = heap::new!(int_lit.value as u32)
+                                    self.registry.data_size = int_lit.value as u32
+                                    is_bad = false
+                                }
+                            }
+                        }
+
+                        if is_bad {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        }
+
+                        continue
+                    }
+
+                    if key.repr.equals("min_pages") {
+                        let const_result = self.get_const_value_or_err(ctx, assign.rhs)
+
+                        let is_bad = true
+                        if const_result.err as u32 == 0 {
+                            if match CodeExpr::IntLiteral(int_lit) = const_result.ok {
+                                if int_lit.tag == null {
+                                    memory.min_pages = heap::new!(int_lit.value as u32)
+                                    is_bad = false
+                                }
+                            }
+                        }
+
+                        if is_bad {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        }
+
+                        continue
+                    }
+
+                    if key.repr.equals("import_from") {
+                        match CodeExpr::StringLiteral(str_expr) = assign.rhs else {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                            continue
+                        }
+
+                        memory.imported_from = heap::new!(str_expr.value.clone())
+                        continue
+                    }
+
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                if self.forbid_memory_loc != null {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot both forbid and define a memory, forbidden at ",
+                    )
+                    message.push_str(
+                        (*self.forbid_memory_loc).to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                self.registry.memory_info = memory
+
+                continue
+
+                fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+                    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+                    do message.push_str(it) with (
+                        fn_name.repr,
+                        "([min_pages = <u32>, data_start = <u32>, exported, import_from = <str-literal>])",
+                    )
+
+                    return arena.new!(Error {
+                        message: message,
+                        loc: fn_name.loc,
+                    })
+                }
+            }
+
+            // TODO: port
+            continue
         }
 
         // TODO: port
@@ -735,6 +1023,20 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::StringLiteral(str_literal) = expr {
+        self.process_memory_op(str_literal.loc)
+
+        let bytes_info = self.process_const_string(str_literal.value.as_str())
+
+        self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len)
+        self.registry.stored_bytes.push!(StoredExprBytes {
+            info: bytes_info,
+            expr_type_id: *self.registry.str_literal_type_id,
+        })
+
+        return Ok()
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         self.type_code_expr(ctx, let_expr.value) catch err {
             self.report_error(err)
@@ -926,6 +1228,121 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Assign(assign) = expr {
+        let lhs_result = self.type_code_expr_and_load(ctx, assign.lhs)
+        if lhs_result.err as u32 != 0 {
+            self.report_error(lhs_result.err)
+        }
+
+        let rhs_result = self.type_code_expr_and_load(ctx, assign.rhs)
+        if rhs_result.err as u32 != 0 {
+            self.report_error(rhs_result.err)
+        }
+
+        if lhs_result.err as u32 == 0 && rhs_result.err as u32 == 0 {
+            if !self.is_type_compatible(self.get_type(lhs_result.ok), self.get_type(rhs_result.ok)) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot assign ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(rhs_result.ok)),
+                    " to variable of type ",
+                    self.registry.fmt(self.get_type(lhs_result.ok)),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: assign.op_loc,
+                }))
+            }
+        }
+
+        self.store_type(ctx, assign.id, Type::Void)
+
+        if lhs_result.err as u32 == 0 {
+            self.process_var_write(ctx, assign.lhs)?
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            ctx.is_expr_referenced = true
+        }
+
+        let expr_type_id = self.type_code_expr_and_load(ctx, prefix_op.expr)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            match Type::Pointer(ptr) = self.get_type(expr_type_id) else {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot dereference expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.process_memory_op(prefix_op.loc)
+
+            // TODO: port inspection
+
+            self.store_expr_info(ctx, prefix_op.id, ptr.pointee)
+            return Ok()
+        }
+
+        // TODO: port
+        todo!()
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        let castee_result = self.type_code_expr_and_load(ctx, cast.expr)
+
+        let casted_to_type_id = self.build_type(ctx, cast.casted_to)?
+        let casted_to_type = self.get_type(casted_to_type_id)
+
+        if castee_result.err as u32 != 0 {
+            self.report_error(castee_result.err)
+        } else {
+            let castee_type = self.get_type(castee_result.ok)
+
+            let castee_type_components = self.get_primitives(castee_type)
+            let casted_to_type_components = self.get_primitives(casted_to_type)
+
+            let noop_local_cast = Typer::is_noop_cast(castee_type_components, casted_to_type_components)
+
+            let single_int_cast = false
+            if castee_type_components.len == 1 && casted_to_type_components.len == 1 {
+                let p1_wide = Typer::is_wide_int(castee_type_components.get!(0))
+                let p2_wide = Typer::is_wide_int(casted_to_type_components.get!(0))
+                single_int_cast = p1_wide.err as u32 == 0 && p2_wide.err as u32 == 0
+            }
+
+            if !(single_int_cast || noop_local_cast) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot cast from ")
+                do message.push_str(it) with (
+                    self.registry.fmt(castee_type),
+                    " to ",
+                    self.registry.fmt(casted_to_type),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: cast.expr.loc(),
+                }))
+            }
+        }
+
+        self.store_type(ctx, cast.id, casted_to_type)
+
+        return Ok()
+    }
+
     // TODO: port
 
     todo!()
@@ -1105,8 +1522,77 @@ fn Typer::get_value_info(
         })
     }
 
+    if symbol.kind == TySymbolKind::Const {
+        let const_def = self.registry.constants.at!(symbol.col_index)
+
+        // TODO: port inspection
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Const,
+            col_index: symbol.col_index,
+            type_id: const_def.type_id,
+        })
+    }
+
     // TODO: port
     todo!()
+}
+
+fn Typer::process_var_write(&self, ctx: &TyContext, lhs: CodeExpr): Result(void, &Error) {
+    let var = self.get_variable_kind(ctx, lhs) catch _ {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Invalid lhs"),
+            loc: lhs.loc(),
+        }))
+    }
+
+    if var == VariableKind::ReadWriteStored {
+        self.process_memory_op(lhs.loc())
+    }
+
+    if var == VariableKind::Readonly {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Cannot mutate a constant"),
+            loc: lhs.loc(),
+        }))
+    }
+
+    return Ok()
+}
+
+fn Typer::get_variable_kind(&self, ctx: &TyContext, expr: CodeExpr): Result(VariableKind, &VoidError) {
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            return Ok(VariableKind::ReadWriteStored)
+        }
+    }
+
+    // TODO: port
+    todo!()
+}
+
+fn Typer::process_memory_op(&self, loc: Loc) {
+    if self.registry.memory_info != null {
+        return
+    }
+
+    if self.forbid_memory_loc != null {
+        let message = String::from_str_in(
+            self.registry.error_arena,
+            "Memory operations forbidden, see ",
+        )
+        message.push_str(
+            (*self.forbid_memory_loc).to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        self.report_error(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+        return
+    }
+
+    self.autodefine_memory = true
 }
 
 fn Typer::define_local(
@@ -1173,11 +1659,32 @@ fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &
         return Ok()
     }
 
-    if match TypeExpr::Pointer(e) = expr {
-        todo!()
+    if match TypeExpr::Pointer(ptr) = expr {
+        let pointee = self.build_type(ctx, ptr.pointee)?
+
+        self.store_type(ctx, ptr.id, Type::Pointer(heap::new!(PointerType {
+            pointee: pointee,
+            is_sequence: ptr.is_sequence,
+            is_nullable: ptr.is_nullable,
+        })))
+        return Ok()
     }
 
-    if match TypeExpr::Container(e) = expr {
+    if match TypeExpr::Container(ctr) = expr {
+        if match TypeExpr::Named(ident) = ctr.container {
+            if ident.repr.equals("seg") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                let item = self.build_type(ctx, ctr.items.get!(0))?
+
+                self.store_type(ctx, ctr.id, Type::Seg(heap::new!(SegType { item: item })))
+                return Ok()
+            }
+        }
+
+        // TODO: port
         todo!()
     }
 
@@ -1352,6 +1859,15 @@ fn Typer::load_type(&self, ctx: &TyContext, expr: CodeExpr): &?TypeId {
     return self.registry.get_expr_type(ctx.expr_id_offset, expr)
 }
 
+fn Typer::get_const_value_or_err(&self, ctx: &TyContext, expr: CodeExpr): Result(CodeExpr, &VoidError) {
+    if match CodeExpr::IntLiteral(_) = expr {
+        return Ok(expr)
+    }
+
+    // TODO: port
+    todo!()
+}
+
 fn Typer::store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: Type) {
     let type_id = self.intern_type(type_)
     return self.store_expr_info(ctx, expr_id, type_id)
@@ -1402,6 +1918,28 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
+    if match Type::Pointer(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(Type::U32)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::Seg(seg) = type_ {
+        Typer::get_type_layout(registry, Type::U32, layout)
+        Typer::get_type_layout(registry, Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: true,
+            is_nullable: false,
+        })), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
     // TODO: port
 }
 
@@ -1424,8 +1962,126 @@ fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
         return intrinsic.fn_name.repr.equals("unreachable")
     }
 
+    if match CodeExpr::FnCall(_) = expr {
+        return false
+    }
+
     // TODO: port
     todo!()
+}
+
+fn Typer::get_primitives(&self, type_: Type): &Vec(Type) {
+    let layout = ref!(TypeLayout::new())
+    layout.primitives = Vec::new!<Type>()
+
+    Typer::get_type_layout(self.registry, type_, layout)
+
+    return layout.primitives
+}
+
+fn Typer::is_noop_cast(primitives1: &Vec(Type), primitives2: &Vec(Type)): bool {
+    if primitives1.len != primitives2.len {
+        return false
+    }
+
+    for i in 0..primitives1.len {
+        let p1_wide = Typer::is_wide_int(primitives1.get!(i))
+        let p2_wide = Typer::is_wide_int(primitives2.get!(i))
+
+        if p1_wide.err as u32 != 0 || p2_wide.err as u32 != 0 {
+            return false
+        }
+
+        if p1_wide.ok != p2_wide.ok {
+            return false
+        }
+    }
+
+    return true
+}
+
+fn Typer::is_wide_int(type_: Type): Result(bool, &VoidError) {
+    if match Type::U64(_) = type_ {
+        return Ok(true)
+    }
+    if match Type::I64(_) = type_ {
+        return Ok(true)
+    }
+
+    if match Type::Bool(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U8(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I8(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U16(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I16(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U32(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I32(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::Null(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::Pointer(_) = type_ {
+        return Ok(false)
+    }
+
+    return Err(VoidError::VALUE)
+}
+
+fn Typer::process_const_string(&self, value: str): BytesSlice {
+    let string_len = value.len
+
+    for pooled_str in self.registry.string_pool.iter!() {
+        if pooled_str.value.as_str().equals(value) {
+            return BytesSlice {
+                ptr: pooled_str.ptr,
+                len: string_len,
+            }
+        }
+    }
+
+    let bytes_slice = self.append_data(value.iter!())
+
+    self.registry.string_pool.push!(PooledString {
+        value: String::from_str(value),
+        ptr: bytes_slice.ptr,
+    })
+
+    return bytes_slice
+}
+
+fn Typer::append_data(&self, bytes: seg(u8)): BytesSlice {
+    let bytes_len = bytes.len
+    let offset = self.registry.data_size
+
+    let instrs = Vec::new!<WasmInstr>()
+    instrs.push!(WasmInstr::I32Const(heap::new!(WasmInstrI32Const { value: offset as i32 })))
+
+    self.registry.data_size += bytes.len
+
+    let data_bytes = Vec::new!<u8>()
+    data_bytes.push_all!(bytes)
+
+    self.registry.datas.push!(WasmData::Active(heap::new!(WasmDataActive {
+        offset: WasmExpr { instrs: instrs },
+        bytes: data_bytes,
+    })))
+
+    return BytesSlice {
+        ptr: offset,
+        len: bytes_len,
+    }
 }
 
 type IncludeInfo = struct {

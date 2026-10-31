@@ -83,7 +83,7 @@ struct CodegenModuleInfo {
 }
 
 #[derive(Default)]
-pub struct CodeGenerator {
+pub struct Codegen {
     // context
     registry: UBRef<Registry>,
 
@@ -95,7 +95,7 @@ pub struct CodeGenerator {
     pub wasm_module: UBCell<WasmModule>,
 }
 
-impl CodeGenerator {
+impl Codegen {
     pub fn new(registry: &Registry) -> Self {
         let mut it = Self::default();
         it.registry = UBRef::new(&*registry);
@@ -2044,10 +2044,10 @@ impl CodeGenerator {
         self.init_scope_from_parent_and_push(&mut module.scope_stack, scope_type);
     }
 
-    fn exit_scope(&mut self, ctx: &ExprContext) -> Scope {
+    fn exit_scope(&mut self, ctx: &ExprContext) {
         let module = &mut self.module_info[ctx.module_id];
 
-        module.scope_stack.pop().unwrap()
+        module.scope_stack.pop().unwrap();
     }
 
     fn current_scope(&self, ctx: &ExprContext) -> &Scope {

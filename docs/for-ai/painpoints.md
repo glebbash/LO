@@ -23,3 +23,11 @@ Context: porting `short-circuit.lo` and `add.lo` to the self-hosted compiler. Or
     - `inspect` could list reachable `todo!()`s per sample, to show port progress.
     - `Registry::fmt` is stubbed to `"<?>"`; porting it early makes type errors debuggable.
 7. **Error-message coverage.** ~115 error sites in `typer.rs` vs ~4 error samples. A corpus of mutated samples, compared Rust vs LO, would find missing or different messages cheaply.
+
+## Claude Sonnet 5 (Claude Code, session of 2026-10-31)
+
+Context: porting `demos/hello-world-raw.lo`. Ordered by time lost.
+
+1. **`catch` has no fallback-value form.** The block must diverge (`return`/`break`/`@unreachable()`), so Rust's `Option`-returning `report_if_err(result)` (report-and-keep-going with "no value") has no equivalent — every such call site needs reading `result.err`/`.ok` directly instead. No clean idea here: Rust's version works by omitting the trailing semicolon to make the tail expression the block's value, and LO has no semicolons/statement-vs-expression split to borrow that mechanism from, so this would need its own syntax, not a straight port of Rust's.
+2. **`result.err == null` is a type error, which is `.err`'s declared type doing its job, not a bug** — `.err` is typed as exactly the error type `E` from `Result(T, E)`, so getting that type back is correct; it's only that comparing it to `null` then fails to typecheck even though 0 means "no error" at the ABI level. Fix is `result.err as u32 != 0`. Possible small improvement: when `E` is itself a pointer type, give `.err` the nullable version of it (`&?E`) so `== null` just works — though this wouldn't apply when `E` is already a plain value (e.g. an error type declared as bare `u32`), where `.err` already gives a plain comparable value with no pointer to make nullable.
+3. **(Porting-specific) Missing infra has no surface signal.** `CodeGenerator`'s scope-stack field, several `WasmInstr` variants, and `get_expr_info`'s scope lookup were all simply absent, not stubbed — each only showed up as a `todo!()` trap several calls deep while porting a sample. Same idea as the existing "`inspect` lists reachable `todo!()`s" entry above: a per-sample dry-run that also flags missing enum variants/fields would surface the whole list at once instead of one panic at a time.
