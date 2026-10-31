@@ -813,7 +813,19 @@ fn Typer::get_fn_param_type(
     self_type_id: &?TypeId,
     infer_allowed: bool,
 ): Result(TypeId, &Error) {
-    // TODO: port self and infer params
+    // TODO: port infer params
+
+    if match FnParamType::Self(_) = fn_param.param_type {
+        return Ok(*self_type_id)
+    }
+
+    if match FnParamType::SelfRef(_) = fn_param.param_type {
+        return Ok(self.intern_type(Type::Pointer(heap::new!(PointerType {
+            pointee: *self_type_id,
+            is_sequence: false,
+            is_nullable: false,
+        }))))
+    }
 
     if match FnParamType::Type(param_type) = fn_param.param_type {
         return self.build_type(ctx, param_type.expr)
@@ -828,8 +840,60 @@ fn Typer::get_fn_self_type(
     fn_name: IdentExpr,
     fn_params: &Vec(FnParam),
 ): Result(&?TypeId, &Error) {
-    // TODO: port
-    return Ok(null)
+    let has_self_param = false
+    for fn_param in fn_params.iter!() {
+        let is_self_param = false
+        if match FnParamType::Self(_) = fn_param.param_type {
+            is_self_param = true
+        }
+        if match FnParamType::SelfRef(_) = fn_param.param_type {
+            is_self_param = true
+        }
+        if !is_self_param {
+            continue
+        }
+
+        has_self_param = true
+
+        if fn_name.parts.len == 1 {
+            return Err(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot use self param in non-method function",
+                ),
+                loc: fn_param.loc,
+            }))
+        }
+    }
+    if !has_self_param {
+        return Ok(null)
+    }
+
+    let fn_module = self.registry.modules.get!(fn_name.loc.module_id)
+
+    let self_type_loc = fn_name.parts.get!(0)
+    self_type_loc.end_pos = fn_name.parts.get!(fn_name.parts.len - 2).end_pos
+
+    let self_type_name = self_type_loc.read_span(fn_module.source)
+
+    // this workaround is needed because `seg` itself is not a valid type
+    if self_type_name.equals("seg") {
+        return Ok(ref!(self.intern_type(Type::Seg(heap::new!(SegType {
+            item: self.intern_type(Type::Never),
+        })))))
+    }
+
+    // this workaround is needed because `Result` itself is not a valid type
+    if self_type_name.equals("Result") {
+        return Ok(ref!(self.intern_type(Type::Result(heap::new!(ResultType {
+            ok: self.intern_type(Type::Never),
+            err: self.intern_type(Type::Never),
+        })))))
+    }
+
+    let self_type_id = self.get_type_id_or_err(ctx, self_type_name, self_type_loc)?
+
+    return Ok(ref!(self_type_id))
 }
 
 fn Typer::type_fns(&self) {
@@ -1215,6 +1279,21 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             call.args.items,
             call.id,
             call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::MethodCall(call) = expr {
+        let lhs_type_id = self.type_code_expr_and_load(ctx, call.lhs)?
+        let fn_name = self.get_fn_name_from_method(self.get_type(lhs_type_id), call.field_name.repr)
+
+        self.type_fn_call(
+            ctx,
+            fn_name,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
         )?
         return Ok()
     }
@@ -1702,9 +1781,14 @@ fn Typer::type_fn_call(
     let all_good = true
     let arg_types = Vec::new!<TypeId>()
 
-    // TODO: port
     if receiver_arg != null {
-        todo!()
+        let receiver_result = self.type_code_expr_and_load(ctx, *receiver_arg)
+        if receiver_result.err as u32 != 0 {
+            self.report_error(receiver_result.err)
+            all_good = false
+        } else {
+            arg_types.push!(receiver_result.ok)
+        }
     }
 
     for arg in args.iter!() {
@@ -1767,6 +1851,27 @@ fn Typer::get_fn_index_for_call(
     }
 
     return Ok(symbol.col_index)
+}
+
+fn Typer::get_fn_name_from_method(&self, receiver_type: Type, method_name: str): str {
+    let deref_receiver_type = self.deref_rec(receiver_type)
+
+    // TODO: port Seg/Result/Container special cases
+
+    let name = String::new_in(self.registry.error_arena, 16)
+    name.push_str(self.registry.fmt(deref_receiver_type))
+    name.push_str("::")
+    name.push_str(method_name)
+
+    return name.as_str()
+}
+
+fn Typer::deref_rec(&self, type_: Type): Type {
+    if match Type::Pointer(ptr) = type_ {
+        return self.deref_rec(self.get_type(ptr.pointee))
+    }
+
+    return type_
 }
 
 fn Typer::get_value_info(

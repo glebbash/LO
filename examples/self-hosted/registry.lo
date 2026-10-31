@@ -468,6 +468,11 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &call_info.return_type_id
     }
 
+    if match CodeExpr::MethodCall(_) = expr {
+        let call_info = self.call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
     if match CodeExpr::InfixOp(_) = expr {
         let binary_op_info = self.binary_op_info.at!(*expr_info)
         return &binary_op_info.result_type_id
@@ -515,8 +520,13 @@ fn Registry::intern_type(&self, type_: Type): TypeId {
 }
 
 fn Registry::fmt(&self, type_: Type): str {
-    // TODO: port
-    return "<?>"
+    let str_result = type_.to_str()
+    if str_result.err as u32 == 0 {
+        return str_result.ok
+    }
+
+    // TODO: port other Type variants
+    todo!()
 }
 
 fn Registry::fmt_many() {

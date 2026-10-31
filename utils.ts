@@ -1032,7 +1032,7 @@ async function commandTest() {
                 "examples/test/while-loop.lo",
                 "examples/test/for-loop.lo",
                 "examples/test/for-each-loop.lo",
-                // "examples/test/methods.lo",
+                "examples/test/methods.lo",
                 // "examples/test/nested-if-break.lo",
                 // "examples/test/struct.lo",
                 // "examples/test/auto-forward-decl.lo",
