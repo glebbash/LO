@@ -412,8 +412,19 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
                 continue
             }
 
-            // TODO: port
-            continue
+            let _ = self.define_symbol(
+                ctx,
+                let_expr.name.repr,
+                TySymbolKind::Global,
+                let_expr.name.loc,
+            )
+
+            self.registry.globals.push!(GlobalDef {
+                module_id: module.id,
+                value: let_expr.value,
+                type_id: self.intern_type(Type::Never), // placeholder
+                wasm_global_index: 0, // placeholder
+            })
         }
 
         // TODO: port
@@ -597,8 +608,14 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 continue
             }
 
-            // TODO: port
-            continue
+            if symbol.kind != TySymbolKind::Global {
+                continue
+            }
+
+            let global = self.registry.globals.at!(symbol.col_index)
+            global.type_id = value_type_id
+
+            // TODO: port inspection
         }
 
         if match TopLevelExpr::Intrinsic(intrinsic) = expr {
@@ -1106,7 +1123,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         if infix_op.op_tag == InfixOpTag::Less || infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
             result_type_id = self.intern_type(Type::Bool)
         }
-        if infix_op.op_tag == InfixOpTag::MulAssign {
+        if infix_op.op_tag == InfixOpTag::AddAssign || infix_op.op_tag == InfixOpTag::MulAssign {
             result_type_id = self.intern_type(Type::Void)
         }
 
@@ -1114,6 +1131,12 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         let base_op = infix_op.op_tag
 
         // TODO: port
+        if infix_op.op_tag == InfixOpTag::AddAssign {
+            is_compound_assignment = true
+            base_op = InfixOpTag::Add
+
+            self.process_var_write(ctx, infix_op.lhs)?
+        }
         if infix_op.op_tag == InfixOpTag::MulAssign {
             is_compound_assignment = true
             base_op = InfixOpTag::Mul
@@ -1522,6 +1545,18 @@ fn Typer::get_value_info(
         })
     }
 
+    if symbol.kind == TySymbolKind::Global {
+        let global = self.registry.globals.at!(symbol.col_index)
+
+        // TODO: port inspection
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Global,
+            col_index: symbol.col_index,
+            type_id: global.type_id,
+        })
+    }
+
     if symbol.kind == TySymbolKind::Const {
         let const_def = self.registry.constants.at!(symbol.col_index)
 
@@ -1561,6 +1596,17 @@ fn Typer::process_var_write(&self, ctx: &TyContext, lhs: CodeExpr): Result(void,
 }
 
 fn Typer::get_variable_kind(&self, ctx: &TyContext, expr: CodeExpr): Result(VariableKind, &VoidError) {
+    if match CodeExpr::Ident(var_name) = expr {
+        let expr_info = self.registry.get_expr_info(ctx.expr_id_offset, var_name.id)
+        let value_info = self.registry.value_info.at!(*expr_info)
+
+        if value_info.kind == ValueKind::Global || value_info.kind == ValueKind::Local {
+            return Ok(VariableKind::ReadWrite)
+        }
+
+        return Ok(VariableKind::Readonly)
+    }
+
     if match CodeExpr::PrefixOp(prefix_op) = expr {
         if prefix_op.op_tag == PrefixOpTag::Dereference {
             return Ok(VariableKind::ReadWriteStored)
@@ -1950,17 +1996,37 @@ fn Typer::align(value: u32, alignment: u32): u32 {
 fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
     // TODO: port
 
+    if match CodeExpr::Ident(_) = expr {
+        return false
+    }
+
+    if match CodeExpr::Let(_) = expr {
+        return false
+    }
+
     if match CodeExpr::If(_) = expr {
         return false
     }
+
+    // TODO: port
 
     if match CodeExpr::Return(_) = expr {
         return true
     }
 
+    // TODO: port
+
     if match CodeExpr::IntrinsicCall(intrinsic) = expr {
         return intrinsic.fn_name.repr.equals("unreachable")
     }
+
+    // TODO: port
+
+    if match CodeExpr::InfixOp(infix) = expr {
+        return Typer::is_naturally_divergent(infix.lhs) || Typer::is_naturally_divergent(infix.rhs)
+    }
+
+    // TODO: port
 
     if match CodeExpr::FnCall(_) = expr {
         return false

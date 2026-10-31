@@ -91,6 +91,8 @@ type WasmInstr = enum (&void) {
     BinaryOp(&WasmInstrBinaryOp),
     LocalGet(&WasmInstrLocalGet),
     LocalSet(&WasmInstrLocalSet),
+    GlobalGet(&WasmInstrGlobalGet),
+    GlobalSet(&WasmInstrGlobalSet),
     Load(&WasmInstrLoad),
     Store(&WasmInstrStore),
     BlockStart(&WasmInstrBlockStart),
@@ -109,6 +111,14 @@ type WasmInstrLocalGet = struct {
 
 type WasmInstrLocalSet = struct {
     local_index: u32,
+}
+
+type WasmInstrGlobalGet = struct {
+    global_index: u32,
+}
+
+type WasmInstrGlobalSet = struct {
+    global_index: u32,
 }
 
 type WasmInstrLoad = struct {
@@ -426,7 +436,24 @@ fn WasmModule::write_global_section(
     output: &Vec(u8),
     section: &Vec(u8),
 ) {
-    // TODO: port
+    if self.globals.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.globals.len)
+    for &global in self.globals.iter!() {
+        WasmModule::write_u8(section, global.value_type as u8)
+
+        if global.mutable {
+            WasmModule::write_u8(section, 0x01u8)
+        } else {
+            WasmModule::write_u8(section, 0x00u8)
+        }
+
+        WasmModule::write_expr(section, global.initial_value)
+    }
+
+    WasmModule::write_section(output, section, 0x06u8)
 }
 
 fn WasmModule::write_export_section(
@@ -602,6 +629,18 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
     if match WasmInstr::LocalSet(local_set) = instr {
         WasmModule::write_u8(out, 0x21u8)
         WasmModule::write_u32(out, local_set.local_index)
+        return
+    }
+
+    if match WasmInstr::GlobalGet(global_get) = instr {
+        WasmModule::write_u8(out, 0x23u8)
+        WasmModule::write_u32(out, global_get.global_index)
+        return
+    }
+
+    if match WasmInstr::GlobalSet(global_set) = instr {
+        WasmModule::write_u8(out, 0x24u8)
+        WasmModule::write_u32(out, global_set.global_index)
         return
     }
 

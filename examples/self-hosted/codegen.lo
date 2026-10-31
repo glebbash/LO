@@ -182,7 +182,34 @@ fn Codegen::codegen_all(&self) {
         }
     }
 
-    // TODO: port
+    // build global initializers and update global indices
+    let wasm_global_index = 0
+    for global_index in 0..self.registry.globals.len {
+        let global = self.registry.globals.at!(global_index)
+        global.wasm_global_index = wasm_global_index
+
+        let wasm_types = Vec::new!<WasmType>()
+        self.lower_type(self.get_type(global.type_id), wasm_types)
+
+        let instrs = Vec::new!<WasmInstr>()
+        self.codegen(&self.module_info.at!(global.module_id).ctx, instrs, global.value)
+
+        for i in 0..wasm_types.len {
+            let wasm_type = wasm_types.get!(i)
+            let instr = instrs.get!(i)
+
+            let initial_value = WasmExpr { instrs: Vec::new!<WasmInstr>() }
+            initial_value.instrs.push!(instr)
+
+            self.wasm_module.globals.push!(WasmGlobal {
+                mutable: true,
+                value_type: wasm_type,
+                initial_value: initial_value,
+            })
+        }
+
+        wasm_global_index += wasm_types.len
+    }
 
     // build function codes
     for fn_info in self.registry.functions.iter!() {
@@ -618,6 +645,15 @@ fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
             }))
         }
 
+        if value_info.kind == ValueKind::Global {
+            let global = self.registry.globals.at!(value_info.col_index)
+
+            return VarInfo::Global(heap::new!(VarInfoGlobal {
+                global_index: global.wasm_global_index,
+                var_type_id: global.type_id,
+            }))
+        }
+
         if value_info.kind == ValueKind::Const {
             let const_def = self.registry.constants.at!(value_info.col_index)
 
@@ -663,6 +699,15 @@ fn Codegen::codegen_var_get(
 ) {
     if match VarInfo::Local(local) = var {
         self.codegen_local_get(instrs, self.get_type(local.var_type_id), local.local_index)
+        return
+    }
+
+    if match VarInfo::Global(global) = var {
+        for i in 0..Typer::count_primitive_components(self.registry, self.get_type(global.var_type_id)) {
+            instrs.push!(WasmInstr::GlobalGet(
+                self.wasm_module.arena.new!(WasmInstrGlobalGet { global_index: global.global_index + i }),
+            ))
+        }
         return
     }
 
@@ -737,6 +782,17 @@ fn Codegen::codegen_var_set_prepare(&self, instrs: &Vec(WasmInstr), var: VarInfo
 fn Codegen::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), var: VarInfo) {
     if match VarInfo::Local(local) = var {
         self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index)
+        return
+    }
+
+    if match VarInfo::Global(global) = var {
+        let i = Typer::count_primitive_components(self.registry, self.get_type(global.var_type_id))
+        while i > 0 {
+            i = i - 1
+            instrs.push!(WasmInstr::GlobalSet(
+                self.wasm_module.arena.new!(WasmInstrGlobalSet { global_index: global.global_index + i }),
+            ))
+        }
         return
     }
 
