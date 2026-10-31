@@ -1054,6 +1054,54 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::ArrayLiteral(array_literal) = expr {
+        self.process_memory_op(array_literal.loc)
+
+        let item_type_id = self.build_type(ctx, array_literal.item_type)?
+        let item_type = self.get_type(item_type_id)
+
+        let bytes = Vec::new!<u8>()
+
+        for item_expr in array_literal.items.iter!() {
+            let current_item_type_id_result = self.type_code_expr_and_load(ctx, item_expr)
+            if current_item_type_id_result.err as u32 != 0 {
+                self.report_error(current_item_type_id_result.err)
+                continue
+            }
+            let current_item_type = self.get_type(current_item_type_id_result.ok)
+
+            if !self.is_type_compatible(item_type, current_item_type) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Unexpected array element type: ",
+                )
+                message.push_str(self.registry.fmt(current_item_type))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(item_type))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: item_expr.loc(),
+                }))
+            }
+
+            self.report_if_err!(self.push_const_expr_bytes(bytes, item_expr, item_type))
+        }
+
+        let bytes_info = self.append_data(bytes.iter!())
+
+        // seg.len is an amount of elements, not total byte size
+        bytes_info.len = array_literal.items.len
+
+        self.store_expr_info(ctx, array_literal.id, self.registry.stored_bytes.len)
+        self.registry.stored_bytes.push!(StoredExprBytes {
+            info: bytes_info,
+            expr_type_id: self.intern_type(Type::Seg(heap::new!(SegType { item: item_type_id }))),
+        })
+
+        return Ok()
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         self.type_code_expr(ctx, let_expr.value) catch err {
             self.report_error(err)
@@ -1325,7 +1373,38 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }
         }
 
-        // TODO: port ForExprIterator::Segment
+        if match ForExprIterator::Segment(segment) = for_expr.iterator {
+            let seg_type_result = self.type_code_expr_and_load(ctx, segment.expr)
+            if seg_type_result.err as u32 != 0 {
+                self.report_error(seg_type_result.err)
+            } else {
+                let iter_type_id = seg_type_result.ok
+                let iter_type = self.get_type(iter_type_id)
+
+                if match Type::Seg(seg) = iter_type {
+                    if for_expr.ref_only {
+                        item_type_id = self.intern_type(Type::Pointer(heap::new!(PointerType {
+                            pointee: seg.item,
+                            is_sequence: false,
+                            is_nullable: false,
+                        })))
+                    } else {
+                        item_type_id = seg.item
+                    }
+                } else {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Expected seg(T), found ",
+                    )
+                    message.push_str(self.registry.fmt(iter_type))
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: segment.expr.loc(),
+                    }))
+                }
+            }
+        }
 
         let ctx = self.child_ctx(ctx, ScopeKind::ForLoop)
 
@@ -2355,6 +2434,31 @@ fn Typer::append_data(&self, bytes: seg(u8)): BytesSlice {
         ptr: offset,
         len: bytes_len,
     }
+}
+
+fn Typer::push_const_expr_bytes(
+    &self,
+    output: &Vec(u8),
+    item: CodeExpr,
+    item_type: Type,
+): Result(void, &Error) {
+    if match CodeExpr::IntLiteral(int) = item {
+        match Type::U32(_) = item_type else {
+            // TODO: port other Type variants
+            todo!()
+        }
+
+        let value = int.value as u32
+        output.push!(value as u8)
+        output.push!((value >> 8) as u8)
+        output.push!((value >> 16) as u8)
+        output.push!((value >> 24) as u8)
+
+        return Ok()
+    }
+
+    // TODO: port other CodeExpr variants
+    todo!()
 }
 
 type IncludeInfo = struct {

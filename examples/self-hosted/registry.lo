@@ -473,6 +473,16 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &binary_op_info.result_type_id
     }
 
+    if match CodeExpr::StringLiteral(_) = expr {
+        let stored_bytes = self.stored_bytes.at!(*expr_info)
+        return &stored_bytes.expr_type_id
+    }
+
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        let stored_bytes = self.stored_bytes.at!(*expr_info)
+        return &stored_bytes.expr_type_id
+    }
+
     // TODO: port other expr kinds
 
     return expr_info

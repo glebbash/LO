@@ -379,6 +379,19 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::ArrayLiteral(array_literal) = expr {
+        let expr_info = self.get_expr_info(ctx, array_literal.id, array_literal.loc)
+        let stored_bytes = self.registry.stored_bytes.at!(expr_info)
+
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.ptr as i32 }),
+        ))
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
+        ))
+        return
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         if let_expr.is_inline {
             // was handled in typer
@@ -652,7 +665,68 @@ fn Codegen::codegen(
             ))
         }
 
-        // TODO: port ForExprIterator::Segment
+        if match ForExprIterator::Segment(segment) = for_expr.iterator {
+            counter_type_id = self.registry.intern_type(Type::U32)
+            range_end_local_index = self.define_unnamed_local(ctx, counter_type_id)
+
+            if for_expr.ref_only {
+                match Type::Pointer(ptr) = self.get_type(item_type_id) else {
+                    @unreachable()
+                }
+
+                let item_layout = ref!(TypeLayout::new())
+                Typer::get_type_layout(self.registry, self.get_type(ptr.pointee), item_layout)
+                step = item_layout.byte_size as i32
+
+                counter_local_index = item_local.local_index
+            } else {
+                let item_layout = ref!(TypeLayout::new())
+                Typer::get_type_layout(self.registry, self.get_type(item_type_id), item_layout)
+                step = item_layout.byte_size as i32
+
+                counter_local_index = self.define_unnamed_local(ctx, counter_type_id)
+
+                item_local_index = item_local.local_index
+            }
+
+            self.codegen(ctx, instrs, segment.expr)
+
+            // needed:
+            // ```
+            // counter = segment.ptr
+            // range_end = segment.ptr + (segment.len * item_size)
+            // ```
+            //
+            // which is done like this to save on locals:
+            // ```
+            // counter, range_end = segment
+            // range_end = counter + (range_end * item_size)
+            // ```
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: range_end_local_index }),
+            ))
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: counter_local_index }),
+            ))
+            instrs.push!(WasmInstr::LocalGet(
+                self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: range_end_local_index }),
+            ))
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: step }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_MUL }),
+            ))
+            instrs.push!(WasmInstr::LocalGet(
+                self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: counter_local_index }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_ADD }),
+            ))
+            instrs.push!(WasmInstr::LocalSet(
+                self.wasm_module.arena.new!(WasmInstrLocalSet { local_index: range_end_local_index }),
+            ))
+        }
 
         instrs.push!(WasmInstr::BlockStart(
             self.wasm_module.arena.new!(WasmInstrBlockStart {
@@ -697,7 +771,18 @@ fn Codegen::codegen(
 
         // item = load item_type at counter
         if item_local_index != u32::MAX {
-            // TODO: port
+            let address_instrs = Vec::new!<WasmInstr>()
+            address_instrs.push!(WasmInstr::LocalGet(
+                self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: counter_local_index }),
+            ))
+
+            self.codegen_var_get(ctx, instrs, VarInfo::Stored(heap::new!(VarInfoStored {
+                address_instrs: address_instrs,
+                offset: 0,
+                var_type_id: item_type_id,
+            })))
+
+            self.codegen_local_set(instrs, self.get_type(item_type_id), item_local_index)
         }
 
         self.codegen_code_block(ctx, instrs, &for_expr.body)
@@ -899,7 +984,7 @@ fn Codegen::codegen_var_get(
             return
         }
 
-        instrs.append!(stored.address_instrs)
+        instrs.push_all!(stored.address_instrs.iter!())
 
         if loads.len > 1 {
             let addr_local_index = self.create_or_get_addr_local(ctx)
@@ -945,7 +1030,7 @@ fn Codegen::codegen_var_set_prepare(&self, instrs: &Vec(WasmInstr), var: VarInfo
             return
         }
 
-        instrs.append!(stored.address_instrs)
+        instrs.push_all!(stored.address_instrs.iter!())
     }
 }
 
