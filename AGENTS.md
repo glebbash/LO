@@ -18,6 +18,8 @@ The port advances one sample at a time. A sample is done when the self-hosted ou
 ## Porting rules (the user cares about these)
 
 1. **Port, don't invent.** Open the Rust function and translate it. Keep names, structure and order. If you're unsure a construct (e.g. nesting a helper `fn` inside an `if` block, not just at a function's top level) is supported at the depth Rust uses it, try compiling it before reaching for a workaround — it's a few seconds, and a workaround that silently diverges from Rust's structure is worse than finding out the construct already works. Nested functions do work at arbitrary block depth, confirmed.
+   - When Rust factors something into its own helper function (e.g. `get_compound_assignment_base_op`), port it as its own function the first time you need it, even if only a couple of its branches apply to the current sample (mark the rest `// TODO: port`). Don't inline a hardcoded special case instead — those pile up across samples and drift further from Rust with each one.
+   - If you do reach for a simpler construct than Rust's instead, leave a `// TODO: port` right there noting the structure differs, so it's never silently lost.
 2. **Minimal per sample.** Port only the branches the current sample exercises. Mark the rest with `// TODO: port` and `todo!()`.
 3. **Never end a function with a silent `return` instead of `todo!()`.** A quiet fallback hides bugs. One example: `get_expr_info` returning 0 made an untyped expression silently emit `i32.add`.
 4. **Error messages go in `self.registry.error_arena`**: `String::from_str_in(arena, ...)` / `String::new_in(arena, cap)` and `arena.new!(Error {...})`. Do not use plain `String::from_str` for errors.
@@ -63,3 +65,7 @@ Define types at the top of the file, above `main`, unless a type is a one-off bo
 2. If the output is produced but wrong: diff `.wat` of Rust vs self-hosted. The first differing instruction points at a typer-info or codegen branch.
 3. Find the corresponding Rust code (`grep -n "CodeExpr::Xyz" src/typer.rs src/codegen.rs`) and compare branch by branch.
 4. Run the full suite before finishing.
+
+## Reporting back
+
+After finishing a sample, don't recap the changes mechanically — the user reads the diff. Report only: issues/surprises hit along the way, anything worth adding to this file's notes (gotchas, debugging recipe), and any feedback on the process. If none, say so briefly.

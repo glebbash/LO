@@ -1130,18 +1130,12 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         let is_compound_assignment = false
         let base_op = infix_op.op_tag
 
-        // TODO: port
-        if infix_op.op_tag == InfixOpTag::AddAssign {
+        let base_op_result = self.get_compound_assignment_base_op(infix_op.op_tag)
+        if base_op_result.err as u32 == 0 {
             is_compound_assignment = true
-            base_op = InfixOpTag::Add
+            base_op = base_op_result.ok
 
             self.process_var_write(ctx, infix_op.lhs)?
-        }
-        if infix_op.op_tag == InfixOpTag::MulAssign {
-            is_compound_assignment = true
-            base_op = InfixOpTag::Mul
-
-            // TODO: port
         }
 
         let op_kind = self.get_binary_op_kind(
@@ -1369,6 +1363,18 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     // TODO: port
 
     todo!()
+}
+
+fn Typer::get_compound_assignment_base_op(&self, op_tag: InfixOpTag): Result(InfixOpTag, &VoidError) {
+    if op_tag == InfixOpTag::AddAssign {
+        return Ok(InfixOpTag::Add)
+    }
+    if op_tag == InfixOpTag::MulAssign {
+        return Ok(InfixOpTag::Mul)
+    }
+
+    // TODO: port other variants
+    return Err(VoidError::VALUE)
 }
 
 fn Typer::get_binary_op_kind(
