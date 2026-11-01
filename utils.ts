@@ -616,6 +616,13 @@ async function commandTest() {
         );
     });
 
+    it("compiles kitchen-sink.lo", async () => {
+        const program = await compile("./examples/test/kitchen-sink.lo");
+        const exports = await loadWasm(program as Uint8Array<ArrayBuffer>);
+
+        assert.strictEqual(exports.main(), 0);
+    });
+
     describe("aoc", () => {
         it("compiles 2020 day 1", async () => {
             const part1 = await runAoc(
@@ -754,39 +761,466 @@ async function commandTest() {
         });
     });
 
-    it("reports multiple errors in fault-tolerance.lo", async () => {
-        try {
-            await compile("./examples/test/compile-errors/fault-tolerance.lo");
-        } catch (err) {
-            assert.strictEqual(
-                (err as Error).message,
-                m`
+    describe("error reporting", () => {
+        it("reports multiple errors in fault-tolerance.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/fault-tolerance.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:10:4 - Cannot redefine main, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:4
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:2:17 - Cannot redefine a, previously defined at examples/test/compile-errors/fault-tolerance.lo:2:9
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:5:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:3:9
                     ERROR: examples/test/compile-errors/fault-tolerance.lo:13:9 - Cannot redefine x, previously defined at examples/test/compile-errors/fault-tolerance.lo:11:9
 
                     `,
-            );
-        }
-    });
+                );
+            }
+        });
 
-    it("resolves types defined out of order and reports errors in case of unsizable types", async () => {
-        try {
-            await compile(
-                "./examples/test/compile-errors/out-of-order-defs.lo",
-            );
-        } catch (err) {
-            assert.strictEqual(
-                (err as Error).message,
-                m`
+        it("resolves types defined out of order and reports errors in case of unsizable types", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/out-of-order-defs.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
                     ERROR: examples/test/compile-errors/out-of-order-defs.lo:10:10 - Cannot determite size of recursive type
                     ERROR: examples/test/compile-errors/out-of-order-defs.lo:13:11 - Cannot determite size of recursive type
                     ERROR: examples/test/compile-errors/out-of-order-defs.lo:22:8 - Cannot determite size of recursive type
 
                     `,
+                );
+            }
+        });
+
+        it("reports expression not allowed in const context", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/const-context.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/const-context.lo:6:9 - Expression not allowed in const context
+
+                    `,
+                );
+            }
+        });
+
+        it("reports incompatible operator for enum payload comparison in enum-payload-compare.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/enum-payload-compare.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/enum-payload-compare.lo:11:15 - Operator \`==\` is incompatible with operands of type Shape
+
+                    `,
+                );
+            }
+        });
+
+        it("reports forbidden memory operations in forbid-memory.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/forbid-memory.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:4:2 - Cannot both forbid and define a memory, forbidden at examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:14:13 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:17:13 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:20:15 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:23:7 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:23:5 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+                    ERROR: examples/test/compile-errors/forbid-memory.lo:29:14 - Memory operations forbidden, see examples/test/compile-errors/forbid-memory.lo:1:2
+
+                    `,
+                );
+            }
+        });
+
+        it("reports redefinition across includes in include-redefinition.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/include-redefinition.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/include-redefinition.lo:4:6 - Cannot redefine Point, already defined at examples/test/compile-errors/lib/point.lo:1:6
+
+                    `,
+                );
+            }
+        });
+
+        it("reports incompatible operator in incompatible-operator.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/incompatible-operator.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/incompatible-operator.lo:11:15 - Operator \`==\` is incompatible with operands of type Point
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid infer call arity in infer-arity.lo", async () => {
+            try {
+                await compile("./examples/test/compile-errors/infer-arity.lo");
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/infer-arity.lo:1:21 - Invalid \`infer\` call, expected 1 named type argument
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid infer call for non-named type in infer-not-named.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/infer-not-named.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/infer-not-named.lo:1:21 - Invalid \`infer\` call, expected 1 named type argument
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid inline fn args in inline-fn-args.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/inline-fn-args.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/inline-fn-args.lo:7:13 - Invalid inline fn args, expected [u32], got [bool]
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid inline fn arity in inline-fn-arity.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/inline-fn-arity.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/inline-fn-arity.lo:7:13 - Invalid number of inline fn args, expected 1, got 2
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid inline fn type args in inline-fn-type-args.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/inline-fn-type-args.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/inline-fn-type-args.lo:7:13 - Invalid number of type args, expected 1, got 2
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid assign target in invalid-assign-target.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/invalid-assign-target.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/invalid-assign-target.lo:7:5 - Invalid lhs
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid condition type in invalid-condition-type.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/invalid-condition-type.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/invalid-condition-type.lo:3:8 - Invalid condition type: u32, expected: bool
+
+                    `,
+                );
+            }
+        });
+
+        it("reports malformed struct literal errors in malformed-struct-literal.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/malformed-struct-literal.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:8:13 - Missing struct fields: y, z
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:9:13 - Missing struct fields: z
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:10:29 - Unexpected struct field name, expecting: \`y\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:10:13 - Missing struct fields: y
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:11:23 - Unexpected struct field name, expecting: \`x\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:11:29 - Unexpected struct field name, expecting: \`y\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:11:13 - Missing struct fields: x
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:12:23 - Unexpected struct field name, expecting: \`x\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:12:29 - Unexpected struct field name, expecting: \`y\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:12:35 - Unexpected struct field name, expecting: \`z\`
+                    ERROR: examples/test/compile-errors/malformed-struct-literal.lo:13:41 - Excess field values
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched array item type in mismatch-array-item.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-array-item.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-array-item.lo:3:22 - Unexpected array element type: bool, expected: u32
+                    panicked at src/typer.rs:4319:38:
+                    not yet implemented
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched assignment type in mismatch-assign.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-assign.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-assign.lo:5:7 - Cannot assign bool to variable of type u32
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched enum payload type in mismatch-enum-payload.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-enum-payload.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-enum-payload.lo:8:13 - Invalid enum payload: bool, expected: u32
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched function arguments in mismatch-fn-args.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-fn-args.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-fn-args.lo:7:13 - Invalid function arguments for function add: [u32, bool], expected [u32, u32]
+                    ERROR: examples/test/compile-errors/mismatch-fn-args.lo:10:13 - Invalid function arguments for function add: [u32], expected [u32, u32]
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched result literal types in mismatch-result-literal.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-result-literal.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-result-literal.lo:3:12 - Cannot create result, Ok type mismatch. Got bool, expected: u32
+                    ERROR: examples/test/compile-errors/mismatch-result-literal.lo:8:12 - Cannot create result, Err type mismatch. Got u32, expected: bool
+                    ERROR: examples/test/compile-errors/mismatch-result-literal.lo:6:4 - Control reaches end of non-void function
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched return type in mismatch-return.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-return.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-return.lo:3:5 - Invalid return type: bool, expected: u32
+
+                    `,
+                );
+            }
+        });
+
+        it("reports mismatched struct field type in mismatch-struct-field.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/mismatch-struct-field.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/mismatch-struct-field.lo:8:30 - Invalid type for struct field Point.y, expected: u32, got: bool
+
+                    `,
+                );
+            }
+        });
+
+        it("reports missing return in missing-return.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/missing-return.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/missing-return.lo:2:4 - Control reaches end of non-void function
+
+                    `,
+                );
+            }
+        });
+
+        it("reports non-void expression in non-void-expression.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/non-void-expression.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/non-void-expression.lo:8:9 - Non void expression in block. Use \`let _ = <expr>\` to ignore expression result.
+
+                    `,
+                );
+            }
+        });
+
+        it("reports redefined global in redefine-global.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/redefine-global.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/redefine-global.lo:4:5 - Cannot redefine limit, previously defined at examples/test/compile-errors/redefine-global.lo:1:5
+
+                    `,
+                );
+            }
+        });
+
+        it("reports invalid @unreachable() arguments in unreachable-args.lo", async () => {
+            try {
+                await compile(
+                    "./examples/test/compile-errors/unreachable-args.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    (err as Error).message,
+                    m`
+                    ERROR: examples/test/compile-errors/unreachable-args.lo:3:6 - Invalid arguments for \`@unreachable(): never\`
+
+                    `,
+                );
+            }
+        });
+
+        it("reports unreachable expression warnings in unreachable-expression.lo", async () => {
+            const stderr = new WASI.VirtualFD();
+            await lo(
+                [
+                    "compile",
+                    "./examples/test/compile-errors/unreachable-expression.lo",
+                ],
+                { stderr },
             );
-        }
+
+            assert.strictEqual(
+                stderr.flushAndReadUtf8(),
+                m`
+                WARNING: examples/test/compile-errors/unreachable-expression.lo:5:5 - Unreachable expression
+                WARNING: examples/test/compile-errors/unreachable-expression.lo:6:5 - Unreachable expression
+
+                `,
+            );
+        });
     });
 
     describe("inspect", () => {
@@ -957,13 +1391,6 @@ async function commandTest() {
 
             assert.strictEqual(result, 42);
         });
-    });
-
-    it("compiles kitchen-sink.lo", async () => {
-        const program = await compile("./examples/test/kitchen-sink.lo");
-        const exports = await loadWasm(program as Uint8Array<ArrayBuffer>);
-
-        assert.strictEqual(exports.main(), 0);
     });
 
     describe("formatter", async () => {
