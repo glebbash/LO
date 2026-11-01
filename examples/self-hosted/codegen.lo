@@ -379,6 +379,13 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::StructLiteral(struct_literal) = expr {
+        for field in struct_literal.body.fields.iter!() {
+            self.codegen(ctx, instrs, field.value)
+        }
+        return
+    }
+
     if match CodeExpr::ArrayLiteral(array_literal) = expr {
         let expr_info = self.get_expr_info(ctx, array_literal.id, array_literal.loc)
         let stored_bytes = self.registry.stored_bytes.at!(expr_info)
@@ -477,7 +484,7 @@ fn Codegen::codegen(
         }
 
         if op_info.is_compound_assignment {
-            let var = self.var_from_expr(ctx, infix_op.lhs)
+            let var = self.var_from_expr(ctx, infix_op.lhs).unwrap!()
 
             self.codegen_var_set_prepare(instrs, var)
             self.codegen_var_get(ctx, instrs, var)
@@ -499,14 +506,25 @@ fn Codegen::codegen(
     }
 
     if match CodeExpr::Ident(_) = expr {
-        let var = self.var_from_expr(ctx, expr)
+        let var = self.var_from_expr(ctx, expr).unwrap!()
         self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
+    if match CodeExpr::FieldAccess(_) = expr {
+        let var = self.var_from_expr(ctx, expr).unwrap!()
+        self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
+    if match CodeExpr::Paren(paren) = expr {
+        self.codegen(ctx, instrs, paren.expr)
         return
     }
 
     if match CodeExpr::PrefixOp(prefix_op) = expr {
         if prefix_op.op_tag == PrefixOpTag::Dereference {
-            let var = self.var_from_expr(ctx, expr)
+            let var = self.var_from_expr(ctx, expr).unwrap!()
             self.codegen_var_get(ctx, instrs, var)
             return
         }
@@ -530,7 +548,7 @@ fn Codegen::codegen(
     }
 
     if match CodeExpr::Assign(assign) = expr {
-        let var = self.var_from_expr(ctx, assign.lhs)
+        let var = self.var_from_expr(ctx, assign.lhs).unwrap!()
 
         self.codegen_var_set_prepare(instrs, var)
         self.codegen(ctx, instrs, assign.rhs)
@@ -895,8 +913,12 @@ fn Codegen::get_block_inout_type(&self) {
     todo!()
 }
 
-fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
+fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): Result(VarInfo, &VoidError) {
     // TODO: port
+
+    if match CodeExpr::Paren(paren) = expr {
+        return self.var_from_expr(ctx, paren.expr)
+    }
 
     if match CodeExpr::Ident(var_name) = expr {
         let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc)
@@ -907,27 +929,27 @@ fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
         if value_info.kind == ValueKind::Local {
             let local = self.registry.locals.at!(value_info.col_index)
 
-            return VarInfo::Local(heap::new!(VarInfoLocal {
+            return Ok(VarInfo::Local(heap::new!(VarInfoLocal {
                 local_index: local.wasm_local_index,
                 var_type_id: local.local_type_id,
-            }))
+            })))
         }
 
         if value_info.kind == ValueKind::Global {
             let global = self.registry.globals.at!(value_info.col_index)
 
-            return VarInfo::Global(heap::new!(VarInfoGlobal {
+            return Ok(VarInfo::Global(heap::new!(VarInfoGlobal {
                 global_index: global.wasm_global_index,
                 var_type_id: global.type_id,
-            }))
+            })))
         }
 
         if value_info.kind == ValueKind::Const {
             let const_def = self.registry.constants.at!(value_info.col_index)
 
-            return VarInfo::Const(heap::new!(VarInfoConst {
+            return Ok(VarInfo::Const(heap::new!(VarInfoConst {
                 const_def: const_def,
-            }))
+            })))
         }
 
         todo!()
@@ -944,19 +966,79 @@ fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): VarInfo {
             let address_instrs = Vec::new!<WasmInstr>()
             self.codegen(ctx, address_instrs, prefix_op.expr)
 
-            return VarInfo::Stored(heap::new!(VarInfoStored {
+            return Ok(VarInfo::Stored(heap::new!(VarInfoStored {
                 address_instrs: address_instrs,
                 offset: 0,
                 var_type_id: ptr.pointee,
-            }))
+            })))
         }
 
         todo!()
     }
 
-    // TODO: port
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let lhs_type = self.get_expr_type(ctx, field_access.lhs)
 
-    todo!()
+        let field = Typer::get_struct_field_info(self.registry, lhs_type, field_access) \
+            .unwrap!()
+
+        if match Type::Pointer(ptr) = lhs_type {
+            if !ptr.is_sequence {
+                let address_instrs = Vec::new!<WasmInstr>()
+                self.codegen(ctx, address_instrs, field_access.lhs)
+
+                return Ok(VarInfo::Stored(heap::new!(VarInfoStored {
+                    address_instrs: address_instrs,
+                    offset: field.byte_offset,
+                    var_type_id: field.field_type_id,
+                })))
+            }
+        }
+
+        let lhs_var_result = self.var_from_expr(ctx, field_access.lhs)
+        if lhs_var_result.err as u32 == 0 {
+            let var = lhs_var_result.ok
+
+            if match VarInfo::Global(global) = var {
+                return Ok(VarInfo::Global(heap::new!(VarInfoGlobal {
+                    global_index: global.global_index + field.field_index,
+                    var_type_id: field.field_type_id,
+                })))
+            }
+
+            if match VarInfo::Local(local) = var {
+                return Ok(VarInfo::Local(heap::new!(VarInfoLocal {
+                    local_index: local.local_index + field.field_index,
+                    var_type_id: field.field_type_id,
+                })))
+            }
+
+            if match VarInfo::Stored(stored) = var {
+                return Ok(VarInfo::Stored(heap::new!(VarInfoStored {
+                    address_instrs: stored.address_instrs,
+                    offset: stored.offset + field.byte_offset,
+                    var_type_id: field.field_type_id,
+                })))
+            }
+
+            // others are handled as struct values, fall through
+        }
+
+        let struct_components_count = Typer::count_primitive_components(self.registry, lhs_type)
+        let field_components_count = Typer::count_primitive_components(self.registry, self.get_type(field.field_type_id))
+
+        let lhs_instrs = Vec::new!<WasmInstr>()
+        self.codegen(ctx, lhs_instrs, field_access.lhs)
+
+        return Ok(VarInfo::StructValueField(heap::new!(VarInfoStructValueField {
+            lhs_instrs: lhs_instrs,
+            drops_before: struct_components_count - field.field_index - field_components_count,
+            drops_after: field.field_index,
+            var_type_id: field.field_type_id,
+        })))
+    }
+
+    return Err(VoidError::VALUE)
 }
 
 fn Codegen::codegen_var_get(
@@ -1014,6 +1096,27 @@ fn Codegen::codegen_var_get(
             }
         } else {
             instrs.append!(loads)
+        }
+
+        return
+    }
+
+    if match VarInfo::StructValueField(struct_value_field) = var {
+        let var_type = self.get_type(struct_value_field.var_type_id)
+
+        instrs.push_all!(struct_value_field.lhs_instrs.iter!())
+        for i in 0..struct_value_field.drops_before {
+            instrs.push!(WasmInstr::Drop)
+        }
+
+        if struct_value_field.drops_after > 0 {
+            let local_index = self.define_unnamed_local(ctx, struct_value_field.var_type_id)
+
+            self.codegen_local_set(instrs, var_type, local_index)
+            for i in 0..struct_value_field.drops_after {
+                instrs.push!(WasmInstr::Drop)
+            }
+            self.codegen_local_get(instrs, var_type, local_index)
         }
 
         return
@@ -1249,6 +1352,14 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    if match Type::Struct(struct_type) = type_ {
+        let struct_def = self.registry.structs.at!(struct_type.struct_index)
+        for &field in struct_def.fields.iter!() {
+            self.lower_type(self.get_type(field.field_type_id), wasm_types)
+        }
+        return
+    }
+
     // TODO: port
 
     todo!()
@@ -1302,6 +1413,22 @@ fn Codegen::push_wasm_dbg_name_section_locals(
             local_name: String::from_str(local_name),
         })
         return local_index + 1
+    }
+
+    if match Type::Struct(struct_type) = local_type {
+        let struct_def = self.registry.structs.at!(struct_type.struct_index)
+        for &field in struct_def.fields.iter!() {
+            let field_local_name = String::new_in(self.registry.error_arena, 16)
+            do field_local_name.push_str(it) with (local_name, ".", field.field_name)
+
+            local_index = self.push_wasm_dbg_name_section_locals(
+                output,
+                local_index,
+                self.get_type(field.field_type_id),
+                field_local_name.as_str(),
+            )
+        }
+        return local_index
     }
 
     // TODO: port

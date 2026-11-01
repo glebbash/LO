@@ -327,8 +327,26 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
             continue // skip, not interested
         }
 
-        if match TopLevelExpr::TypeDef(_) = expr {
-            continue // TODO: port
+        if match TopLevelExpr::TypeDef(type_def) = expr {
+            if match TypeDefValue::Struct(struct_value) = type_def.value {
+                let _ = self.define_symbol(
+                    ctx,
+                    type_def.name.repr,
+                    TySymbolKind::Struct,
+                    type_def.name.loc,
+                )
+
+                self.registry.structs.push!(StructDef {
+                    ctx: ctx,
+                    struct_name: type_def.name.repr,
+                    fields: Vec::new!<StructField>(),
+                    field_defs: struct_value.fields,
+                    resolution: TypeResolution::NotStarted,
+                })
+            }
+
+            // TODO: port TypeDefValue::Enum
+            continue
         }
 
         if match TopLevelExpr::Fn(fn_def) = expr {
@@ -478,12 +496,172 @@ fn Typer::resolve_type_alias(&self, type_alias: &TyTypeAlias) {
 }
 
 fn Typer::resolve_struct_layout(&self, struct_def: &StructDef): bool {
-    // TODO: port
+    if struct_def.resolution == TypeResolution::Resolved {
+        return true
+    }
+
+    if struct_def.resolution == TypeResolution::InProgress {
+        struct_def.resolution = TypeResolution::Resolved
+        return false
+    }
+
+    struct_def.resolution = TypeResolution::InProgress
+
+    let struct_layout = TypeLayout::new()
+
+    for field in struct_def.field_defs.iter!() {
+        let is_redefined = false
+        for existing_field in struct_def.fields.iter!() {
+            if existing_field.field_name.equals(field.field_name.repr) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot redefine struct field '",
+                )
+                do message.push_str(it) with (
+                    field.field_name.repr,
+                    "', previously defined at ",
+                    existing_field.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field.field_name.loc,
+                }))
+                is_redefined = true
+                break
+            }
+        }
+        if is_redefined {
+            continue
+        }
+
+        let field_type_result = self.build_type(struct_def.ctx, field.field_type)
+        let field_type_id = self.intern_type(Type::Never)
+        if field_type_result.err as u32 == 0 {
+            field_type_id = field_type_result.ok
+        } else {
+            self.report_error(field_type_result.err)
+        }
+
+        // TODO: port inspection
+
+        let ok = self.resolve_type_size(struct_def.ctx, field_type_id)
+        if !ok {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot determite size of recursive type",
+                ),
+                loc: field.field_type.loc(),
+            }))
+            continue
+        }
+
+        let field_layout = ref!(TypeLayout::new())
+        Typer::get_type_layout(self.registry, self.get_type(field_type_id), field_layout)
+
+        let field_index = struct_layout.primitives_count
+        struct_layout.primitives_count += field_layout.primitives_count
+        struct_layout.alignment = u32::max!(struct_layout.alignment, field_layout.alignment)
+
+        struct_def.fields.push!(StructField {
+            field_name: field.field_name.repr,
+            field_type_id: field_type_id,
+            field_layout: *field_layout,
+            field_index: field_index,
+            byte_offset: 0, // placeholder, updated when fields are aligned
+            loc: field.field_name.loc,
+        })
+    }
+
+    // align fields
+    for &field in struct_def.fields.iter!() {
+        struct_layout.byte_size = Typer::align(struct_layout.byte_size, field.field_layout.alignment)
+
+        field.byte_offset = struct_layout.byte_size
+        struct_layout.byte_size += field.field_layout.byte_size
+    }
+
+    struct_def.resolution = TypeResolution::Resolved
+    return true
+}
+
+fn Typer::resolve_type_size(&self, ctx: &TyContext, type_id: TypeId): bool {
+    let type_ = self.get_type(type_id)
+
+    if match Type::Result(result) = type_ {
+        return self.resolve_type_size(ctx, result.ok) && self.resolve_type_size(ctx, result.err)
+    }
+
+    if match Type::Container(ctr) = type_ {
+        return self.resolve_type_size(ctx, ctr.container)
+    }
+
+    if match Type::Struct(struct_type) = type_ {
+        let struct_def = self.registry.structs.at!(struct_type.struct_index)
+        return self.resolve_struct_layout(struct_def)
+    }
+
     return true
 }
 
 fn Typer::resolve_enum_body(&self, enum_def: &EnumDef) {
     // TODO: port
+}
+
+type StructFieldInfo = struct {
+    field_type_id: TypeId,
+    field_index: u32,
+    byte_offset: u32,
+    loc: &?Loc,
+}
+
+fn Typer::get_struct_field_info(
+    registry: &Registry,
+    lhs_type: Type,
+    field_access: &FieldAccessExpr,
+): Result(StructFieldInfo, &Error) {
+    // TODO: port Pointer/Container/Seg/Result/Enum special cases
+
+    match Type::Struct(struct_type) = lhs_type else {
+        let message = String::from_str_in(registry.error_arena, "Cannot get field '")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "' on non struct: ",
+            registry.fmt(lhs_type),
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    let struct_def = registry.structs.at!(struct_type.struct_index)
+
+    for &field in struct_def.fields.iter!() {
+        if field.field_name.equals(field_access.field_name.repr) {
+            return Ok(StructFieldInfo {
+                field_type_id: field.field_type_id,
+                field_index: field.field_index,
+                byte_offset: field.byte_offset,
+                loc: ref!(field.loc),
+            })
+        }
+    }
+
+    let message = String::from_str_in(registry.error_arena, "Unknown field `")
+    do message.push_str(it) with (
+        field_access.field_name.repr,
+        "` in struct `",
+        struct_def.struct_name,
+        "`",
+    )
+
+    return Err(registry.error_arena.new!(Error {
+        message: message,
+        loc: field_access.field_name.loc,
+    }))
 }
 
 fn Typer::resolve_str_literal_type(&self) {
@@ -1118,6 +1296,103 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::StructLiteral(struct_literal) = expr {
+        for field in struct_literal.body.fields.iter!() {
+            self.report_if_err!(self.type_code_expr(ctx, field.value))
+        }
+
+        let symbol = self.get_symbol(ctx, struct_literal.struct_name.repr)
+        if symbol == null {
+            let message = String::from_str_in(self.registry.error_arena, "Unknown struct: ")
+            message.push_str(struct_literal.struct_name.repr)
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.loc,
+            }))
+        }
+        if symbol.kind != TySymbolKind::Struct {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Struct name expected, got symbol ",
+            )
+            message.push_str(struct_literal.struct_name.repr)
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.loc,
+            }))
+        }
+        let struct_index = symbol.col_index
+
+        // TODO: port inspection
+
+        self.store_type(ctx, struct_literal.id, Type::Struct(heap::new!(StructType {
+            struct_index: struct_index,
+        })))
+
+        let struct_def = self.registry.structs.at!(struct_index)
+
+        for field_index in 0..struct_literal.body.fields.len {
+            let field_literal = struct_literal.body.fields.get!(field_index)
+
+            if field_index >= struct_def.fields.len {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Excess field values"),
+                    loc: field_literal.key_loc,
+                }))
+                continue
+            }
+            let struct_field = struct_def.fields.get!(field_index)
+
+            if !field_literal.key.equals(struct_field.field_name) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Unexpected struct field name, expecting: `",
+                )
+                do message.push_str(it) with (struct_field.field_name, "`")
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field_literal.key_loc,
+                }))
+            }
+
+            let field_value_type_id = self.load_type(ctx, field_literal.value)
+            if field_value_type_id == null {
+                continue
+            }
+            let field_value_type = self.get_type(*field_value_type_id)
+
+            if !self.is_type_compatible(self.get_type(struct_field.field_type_id), field_value_type) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid type for struct field ",
+                )
+                do message.push_str(it) with (
+                    struct_literal.struct_name.repr,
+                    ".",
+                    struct_field.field_name,
+                    ", expected: ",
+                    self.registry.fmt(self.get_type(struct_field.field_type_id)),
+                    ", got: ",
+                    self.registry.fmt(field_value_type),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field_literal.value.loc(),
+                }))
+            }
+
+            // TODO: port inspection
+        }
+
+        // TODO: port missing struct fields check
+
+        return Ok()
+    }
+
     if match CodeExpr::ArrayLiteral(array_literal) = expr {
         self.process_memory_op(array_literal.loc)
 
@@ -1690,6 +1965,38 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        ctx.is_expr_referenced = false
+
+        let lhs_type_id = self.type_code_expr_and_load(ctx, field_access.lhs)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if match Type::Pointer(_) = self.get_type(lhs_type_id) {
+            if !ctx.is_expr_referenced {
+                self.process_memory_op(field_access.field_name.loc)
+            }
+        }
+
+        let field = Typer::get_struct_field_info(self.registry, self.get_type(lhs_type_id), field_access)?
+
+        // TODO: port inspection
+
+        self.store_type(ctx, field_access.id, self.get_type(field.field_type_id))
+        return Ok()
+    }
+
+    if match CodeExpr::Paren(paren) = expr {
+        self.type_code_expr(ctx, paren.expr)?
+
+        let expr_type_id = self.load_type(ctx, paren.expr)
+        if expr_type_id != null {
+            self.store_expr_info(ctx, paren.id, *expr_type_id)
+        }
+        return Ok()
+    }
+
     // TODO: port
 
     todo!()
@@ -1984,6 +2291,23 @@ fn Typer::get_variable_kind(&self, ctx: &TyContext, expr: CodeExpr): Result(Vari
         }
     }
 
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let lhs_type_id = self.load_type(ctx, field_access.lhs)
+        let lhs_type = self.get_type(*lhs_type_id)
+
+        if match Type::Pointer(ptr) = lhs_type {
+            if !ptr.is_sequence {
+                return Ok(VariableKind::ReadWriteStored)
+            }
+        }
+
+        let var_result = self.get_variable_kind(ctx, field_access.lhs)
+        if var_result.err as u32 == 0 {
+            return Ok(var_result.ok)
+        }
+        return Ok(VariableKind::Readonly)
+    }
+
     // TODO: port
     todo!()
 }
@@ -2122,6 +2446,14 @@ fn Typer::get_type_id_or_err(
         full_message.push_str(type_name)
 
         return Err(alloc.new!(Error { message: full_message, loc: loc }))
+    }
+
+    if symbol.kind == TySymbolKind::Struct {
+        // TODO: port inspection
+
+        return Ok(self.intern_type(Type::Struct(heap::new!(StructType {
+            struct_index: symbol.col_index,
+        }))))
     }
 
     if symbol.kind == TySymbolKind::TypeAlias {
@@ -2323,6 +2655,13 @@ fn Typer::count_primitive_components(registry: &Registry, type_: Type): u32 {
 }
 
 fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout) {
+    if match Type::Never(_) = type_ {
+        return
+    }
+    if match Type::Void(_) = type_ {
+        return
+    }
+
     // TODO: port
 
     if match Type::U32(_) = type_ {
@@ -2357,7 +2696,19 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
+    if match Type::Struct(struct_type) = type_ {
+        let struct_def = registry.structs.at!(struct_type.struct_index)
+
+        for &field in struct_def.fields.iter!() {
+            Typer::get_type_layout(registry, registry.get_type(field.field_type_id), layout)
+        }
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
     // TODO: port
+    todo!()
 }
 
 fn Typer::align(value: u32, alignment: u32): u32 {

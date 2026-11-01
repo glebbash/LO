@@ -488,6 +488,16 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &stored_bytes.expr_type_id
     }
 
+    if match CodeExpr::Break(_) = expr {
+        let break_info = self.breaks.at!(*expr_info)
+        return &break_info.expr_type_id
+    }
+
+    if match CodeExpr::Continue(_) = expr {
+        let break_info = self.breaks.at!(*expr_info)
+        return &break_info.expr_type_id
+    }
+
     // TODO: port other expr kinds
 
     return expr_info
@@ -523,6 +533,10 @@ fn Registry::fmt(&self, type_: Type): str {
     let str_result = type_.to_str()
     if str_result.err as u32 == 0 {
         return str_result.ok
+    }
+
+    if match Type::Struct(struct_type) = type_ {
+        return self.structs.at!(struct_type.struct_index).struct_name
     }
 
     // TODO: port other Type variants

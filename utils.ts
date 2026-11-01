@@ -1034,7 +1034,7 @@ async function commandTest() {
                 "examples/test/for-each-loop.lo",
                 "examples/test/methods.lo",
                 "examples/test/nested-if-break.lo",
-                // "examples/test/struct.lo",
+                "examples/test/struct.lo",
                 // "examples/test/auto-forward-decl.lo",
                 // "examples/test/struct-value-field-access.lo",
                 // "examples/test/decl-nesting.lo",
