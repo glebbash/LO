@@ -317,7 +317,13 @@ impl Printer {
             stdout_write(" ");
         }
 
-        if code_block.loc.pos.line == code_block.loc.end_pos.line {
+        let mut has_comment_inside = false;
+        if self.comments_printed < self.parser.lexer.comments.len() {
+            let next_comment = self.parser.lexer.comments[self.comments_printed];
+            has_comment_inside = next_comment.pos.offset < code_block.loc.end_pos.offset;
+        }
+
+        if code_block.exprs.len() == 0 && !has_comment_inside {
             return stdout_write("{}");
         }
 
