@@ -517,9 +517,9 @@ async function commandTest() {
         assert.strictEqual(
             output,
             m`
-            p1 = 1048600
-            p2 = 1048600
-            p3 = 1048612
+            p1 = 1048604
+            p2 = 1048604
+            p3 = 1048620
 
             `,
         );
@@ -1073,7 +1073,7 @@ async function commandTest() {
                 "examples/test/demos/wasm4/src/blink.lo",
                 "examples/test/demos/wasm4/src/dark-maze.lo",
                 "examples/test/demos/wasm4/src/slasher.lo",
-                // "examples/self-hosted/0-cli.lo",
+                "examples/self-hosted/0-cli.lo",
             ];
 
             for (const fileName of files) {

@@ -207,7 +207,7 @@ type CodeExpr = enum (&void) {
     FnCall(&FnCallExpr),
     MethodCall(&MethodCallExpr),
     InlineFnCall(&InlineFnCallExpr),
-    InlineFnMethodCall(&InlineFnMethodCallExpr),
+    InlineMethodCall(&InlineMethodCallExpr),
     IntrinsicCall(&InlineFnCallExpr),
 
     // control flow
@@ -224,7 +224,7 @@ type CodeExpr = enum (&void) {
     // other
     Paren(&ParenExpr),
     DoWith(&DoWithExpr),
-    ExprPipe(&ExprPipeExpr),
+    Pipe(&PipeExpr),
     Sizeof(&SizeofExpr),
 }
 
@@ -361,7 +361,7 @@ type DoWithExpr = struct {
     loc: Loc,
 }
 
-type ExprPipeExpr = struct {
+type PipeExpr = struct {
     id: u32,
     lhs: CodeExpr,
     rhs: CodeExpr,
@@ -488,7 +488,7 @@ type InlineFnCallExpr = struct {
     loc: Loc,
 }
 
-type InlineFnMethodCallExpr = struct {
+type InlineMethodCallExpr = struct {
     id: u32,
     lhs: CodeExpr,
     field_name: IdentExpr,
@@ -591,7 +591,7 @@ fn CodeExpr::id(self): u32 {
     if match CodeExpr::IntrinsicCall(e) = self {
         return e.id
     }
-    if match CodeExpr::InlineFnMethodCall(e) = self {
+    if match CodeExpr::InlineMethodCall(e) = self {
         return e.id
     }
     if match CodeExpr::Sizeof(e) = self {
@@ -606,7 +606,7 @@ fn CodeExpr::id(self): u32 {
     if match CodeExpr::DoWith(e) = self {
         return e.id
     }
-    if match CodeExpr::ExprPipe(e) = self {
+    if match CodeExpr::Pipe(e) = self {
         return e.id
     }
     @unreachable()
@@ -700,7 +700,7 @@ fn CodeExpr::loc(self): Loc {
     if match CodeExpr::IntrinsicCall(e) = self {
         return e.loc
     }
-    if match CodeExpr::InlineFnMethodCall(e) = self {
+    if match CodeExpr::InlineMethodCall(e) = self {
         return e.loc
     }
     if match CodeExpr::Sizeof(e) = self {
@@ -715,7 +715,7 @@ fn CodeExpr::loc(self): Loc {
     if match CodeExpr::DoWith(e) = self {
         return e.loc
     }
-    if match CodeExpr::ExprPipe(e) = self {
+    if match CodeExpr::Pipe(e) = self {
         return e.loc
     }
     @unreachable()

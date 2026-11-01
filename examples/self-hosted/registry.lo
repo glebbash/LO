@@ -478,7 +478,7 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &call_info.return_type_id
     }
 
-    if match CodeExpr::InlineFnMethodCall(_) = expr {
+    if match CodeExpr::InlineMethodCall(_) = expr {
         let call_info = self.inline_call_info.at!(*expr_info)
         return &call_info.return_type_id
     }
@@ -547,6 +547,10 @@ fn Registry::fmt(&self, type_: Type): str {
 
     if match Type::Struct(struct_type) = type_ {
         return self.structs.at!(struct_type.struct_index).struct_name
+    }
+
+    if match Type::Enum(enum_type) = type_ {
+        return self.enums.at!(enum_type.enum_index).enum_name
     }
 
     // TODO: port other Type variants

@@ -487,7 +487,7 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::ExprPipe(pipe) = expr {
+    if match CodeExpr::Pipe(pipe) = expr {
         self.print_code_expr(pipe.lhs)
         if !self.print_backslashes_before(pipe.op_loc.pos.offset) {
             stdout_write(" ")
@@ -678,7 +678,7 @@ fn Printer::print_code_expr(&self, expr: CodeExpr) {
         return
     }
 
-    if match CodeExpr::InlineFnMethodCall(call) = expr {
+    if match CodeExpr::InlineMethodCall(call) = expr {
         self.print_code_expr(call.lhs)
         let _ = self.print_backslashes_before(call.field_name.loc.pos.offset)
         stdout_write(".")

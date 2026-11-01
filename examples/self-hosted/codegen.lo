@@ -752,7 +752,7 @@ fn Codegen::codegen(
         return
     }
 
-    if match CodeExpr::InlineFnMethodCall(call) = expr {
+    if match CodeExpr::InlineMethodCall(call) = expr {
         self.codegen_inline_fn_call(ctx, instrs, call.id, call.field_name.loc)
         return
     }
@@ -1920,6 +1920,23 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
+    if match Type::I64(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I64,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I64,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
     if match Type::Result(result) = pointee_type {
         let ok = self.get_type(result.ok)
         let err = self.get_type(result.err)
@@ -2001,6 +2018,18 @@ fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmIns
         instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
         return
     }
+    if match Type::I8(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::U16(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::I16(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
     if match Type::U32(_) = value_type {
         instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
         return
@@ -2022,6 +2051,10 @@ fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmIns
         instrs.push!(WasmInstr::I64Const(self.wasm_module.arena.new!(WasmInstrI64Const { value: 0i64 })))
         return
     }
+    if match Type::I64(_) = value_type {
+        instrs.push!(WasmInstr::I64Const(self.wasm_module.arena.new!(WasmInstrI64Const { value: 0i64 })))
+        return
+    }
 
     if match Type::Struct(struct_type) = value_type {
         let struct_def = self.registry.structs.at!(struct_type.struct_index)
@@ -2031,7 +2064,13 @@ fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmIns
         return
     }
 
-    // TODO: port Enum
+    if match Type::Enum(enum_type) = value_type {
+        let enum_def = self.registry.enums.at!(enum_type.enum_index)
+
+        self.codegen_default_value(ctx, instrs, Type::U32)
+        self.codegen_default_value(ctx, instrs, self.get_type(enum_def.variant_type_id))
+        return
+    }
 
     if match Type::Result(result) = value_type {
         self.codegen_default_value(ctx, instrs, self.get_type(result.ok))
@@ -2069,6 +2108,11 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
 
     // TODO: port
 
+    if match Type::Null(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
     if match Type::Bool(_) = type_ {
         wasm_types.push!(WasmType::I32)
         return
@@ -2079,7 +2123,17 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    if match Type::I8(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
     if match Type::U16(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    if match Type::I16(_) = type_ {
         wasm_types.push!(WasmType::I32)
         return
     }
@@ -2094,6 +2148,11 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    if match Type::F32(_) = type_ {
+        wasm_types.push!(WasmType::F32)
+        return
+    }
+
     if match Type::Pointer(_) = type_ {
         wasm_types.push!(WasmType::I32)
         return
@@ -2101,6 +2160,16 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
 
     if match Type::U64(_) = type_ {
         wasm_types.push!(WasmType::I64)
+        return
+    }
+
+    if match Type::I64(_) = type_ {
+        wasm_types.push!(WasmType::I64)
+        return
+    }
+
+    if match Type::F64(_) = type_ {
+        wasm_types.push!(WasmType::F64)
         return
     }
 
@@ -2186,7 +2255,13 @@ fn Codegen::push_wasm_dbg_name_section_locals(
         return local_index // skip
     }
 
-    // TODO: port
+    if match Type::Null(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
 
     if match Type::Bool(_) = local_type {
         output.push!(WasmLocalInfo {
@@ -2197,6 +2272,30 @@ fn Codegen::push_wasm_dbg_name_section_locals(
     }
 
     if match Type::U8(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::I8(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::U16(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::I16(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
             local_name: String::from_str(local_name),
@@ -2221,6 +2320,14 @@ fn Codegen::push_wasm_dbg_name_section_locals(
     }
 
     if match Type::U64(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::I64(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
             local_name: String::from_str(local_name),

@@ -2481,7 +2481,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
-    if match CodeExpr::InlineFnMethodCall(call) = expr {
+    if match CodeExpr::InlineMethodCall(call) = expr {
         let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, call.lhs)?)
         let inline_fn_name = self.get_fn_name_from_method(lhs_type, call.field_name.repr)
 
@@ -3220,6 +3220,13 @@ fn Typer::get_binary_op_kind(
         signed = true
     } else if match Type::U64(_) = operand_type {
         wasm_op_type = WasmType::I64
+    } else if match Type::I64(_) = operand_type {
+        wasm_op_type = WasmType::I64
+        signed = true
+    } else if match Type::F32(_) = operand_type {
+        wasm_op_type = WasmType::F32
+    } else if match Type::F64(_) = operand_type {
+        wasm_op_type = WasmType::F64
     } else if match Type::Enum(enum_type) = operand_type {
         if !self.get_type(self.registry.enums.at!(enum_type.enum_index).variant_type_id).equals(Type::Void) {
             // TODO: port
@@ -3315,6 +3322,36 @@ fn Typer::get_binary_op_kind(
         if op_tag == InfixOpTag::NotEqual {
             return Ok(WasmBinaryOpKind::I64_NE)
         }
+        if op_tag == InfixOpTag::Less {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_LT_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_LT_U)
+        }
+        if op_tag == InfixOpTag::Greater {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_GT_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_GT_U)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_LE_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_LE_U)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_GE_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_GE_U)
+        }
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::I64_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::I64_SUB)
+        }
         if op_tag == InfixOpTag::Mul {
             return Ok(WasmBinaryOpKind::I64_MUL)
         }
@@ -3329,6 +3366,27 @@ fn Typer::get_binary_op_kind(
                 return Ok(WasmBinaryOpKind::I64_REM_S)
             }
             return Ok(WasmBinaryOpKind::I64_REM_U)
+        }
+        if op_tag == InfixOpTag::And {
+            return Ok(WasmBinaryOpKind::I64_AND)
+        }
+        if op_tag == InfixOpTag::BitAnd {
+            return Ok(WasmBinaryOpKind::I64_AND)
+        }
+        if op_tag == InfixOpTag::Or {
+            return Ok(WasmBinaryOpKind::I64_OR)
+        }
+        if op_tag == InfixOpTag::BitOr {
+            return Ok(WasmBinaryOpKind::I64_OR)
+        }
+        if op_tag == InfixOpTag::ShiftLeft {
+            return Ok(WasmBinaryOpKind::I64_SHL)
+        }
+        if op_tag == InfixOpTag::ShiftRight {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_SHR_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_SHR_U)
         }
     }
 
@@ -4387,7 +4445,37 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
+    if match Type::F32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
     if match Type::U64(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 8)
+        layout.byte_size = Typer::align(layout.byte_size, 8) + 8
+        return
+    }
+
+    if match Type::I64(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 8)
+        layout.byte_size = Typer::align(layout.byte_size, 8) + 8
+        return
+    }
+
+    if match Type::F64(_) = type_ {
         if layout.primitives != null {
             layout.primitives.push!(type_)
         }
@@ -4452,66 +4540,121 @@ fn Typer::align(value: u32, alignment: u32): u32 {
 }
 
 fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
-    // TODO: port
-
+    if match CodeExpr::BoolLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::CharLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::NullLiteral(_) = expr {
+        return false
+    }
     if match CodeExpr::IntLiteral(_) = expr {
         return false
     }
-
+    if match CodeExpr::StringLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::StructLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::ResultLiteral(_) = expr {
+        return false
+    }
     if match CodeExpr::Ident(_) = expr {
         return false
     }
-
     if match CodeExpr::Let(_) = expr {
         return false
     }
-
+    if match CodeExpr::Fn(_) = expr {
+        return false
+    }
+    if match CodeExpr::Cast(_) = expr {
+        return false
+    }
+    if match CodeExpr::Assign(_) = expr {
+        return false
+    }
+    if match CodeExpr::FieldAccess(_) = expr {
+        return false
+    }
+    if match CodeExpr::PropagateError(_) = expr {
+        return false
+    }
+    if match CodeExpr::FnCall(_) = expr {
+        return false
+    }
+    if match CodeExpr::MethodCall(_) = expr {
+        return false
+    }
+    if match CodeExpr::InlineFnCall(_) = expr {
+        return false
+    }
     if match CodeExpr::If(_) = expr {
         return false
     }
-
+    if match CodeExpr::Sizeof(_) = expr {
+        return false
+    }
     if match CodeExpr::While(_) = expr {
         return false
     }
-
     if match CodeExpr::For(_) = expr {
         return false
     }
-
-    // TODO: port
+    if match CodeExpr::Defer(_) = expr {
+        return false
+    }
+    if match CodeExpr::InlineMethodCall(_) = expr {
+        return false
+    }
 
     if match CodeExpr::Break(_) = expr {
         return true
     }
-
     if match CodeExpr::Continue(_) = expr {
         return true
     }
-
     if match CodeExpr::Return(_) = expr {
         return true
     }
 
-    // TODO: port
-
+    if match CodeExpr::Paren(paren_expr) = expr {
+        return Typer::is_naturally_divergent(paren_expr.expr)
+    }
     if match CodeExpr::IntrinsicCall(intrinsic) = expr {
         return intrinsic.fn_name.repr.equals("unreachable")
     }
 
-    // TODO: port
-
+    if match CodeExpr::Catch(catch_) = expr {
+        return Typer::is_naturally_divergent(catch_.lhs)
+    }
     if match CodeExpr::InfixOp(infix) = expr {
         return Typer::is_naturally_divergent(infix.lhs) || Typer::is_naturally_divergent(infix.rhs)
     }
-
-    // TODO: port
-
-    if match CodeExpr::FnCall(_) = expr {
-        return false
+    if match CodeExpr::PrefixOp(prefix) = expr {
+        return Typer::is_naturally_divergent(prefix.expr)
+    }
+    if match CodeExpr::Match(match_) = expr {
+        return Typer::is_naturally_divergent(match_.header.expr_to_match)
+    }
+    if match CodeExpr::Pipe(pipe) = expr {
+        return Typer::is_naturally_divergent(pipe.lhs) || Typer::is_naturally_divergent(pipe.rhs)
     }
 
-    // TODO: port
-    todo!()
+    if match CodeExpr::DoWith(do_with_) = expr {
+        let divergent = Typer::is_naturally_divergent(do_with_.body)
+        for arg in do_with_.args.items.iter!() {
+            divergent = divergent || Typer::is_naturally_divergent(arg)
+        }
+        return divergent
+    }
+
+    @unreachable()
 }
 
 fn Typer::get_primitives(&self, type_: Type): &Vec(Type) {
@@ -4772,6 +4915,22 @@ fn Typer::push_const_expr_bytes(
         output.push!((value >> 8) as u8)
         output.push!((value >> 16) as u8)
         output.push!((value >> 24) as u8)
+
+        return Ok()
+    }
+
+    if match CodeExpr::StringLiteral(str_literal) = item {
+        let str_bytes = self.process_const_string(str_literal.value.as_str())
+
+        output.push!(str_bytes.ptr as u8)
+        output.push!((str_bytes.ptr >> 8) as u8)
+        output.push!((str_bytes.ptr >> 16) as u8)
+        output.push!((str_bytes.ptr >> 24) as u8)
+
+        output.push!(str_bytes.len as u8)
+        output.push!((str_bytes.len >> 8) as u8)
+        output.push!((str_bytes.len >> 16) as u8)
+        output.push!((str_bytes.len >> 24) as u8)
 
         return Ok()
     }

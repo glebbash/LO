@@ -178,6 +178,7 @@ inline fn tmp_alloc_many!<T>(count: u32): &[]T {
 type heap::Block = struct {
     size: u32,
     used: bool,
+    next_free: &?heap::Block, // threads only through freed blocks, see `heap::FREE_LIST`
 }
 
 inline fn heap::Block::data!(&self): &void {
@@ -188,11 +189,11 @@ inline fn heap::Block::next!(&self): &heap::Block {
     (self.data!() as u32 + self.size) as &heap::Block
 }
 
-let heap::FIRST_BLOCK = null as &?heap::Block
-
 let heap::CURRENT_BLOCK = null as &?heap::Block
 
 let heap::FREE_BLOCKS = 0
+
+let heap::FREE_LIST = null as &?heap::Block
 
 inline fn heap::new!(value: infer(T)): &T {
     let ptr = heap::alloc!<T>()
@@ -224,7 +225,6 @@ fn heap::alloc(size: u32): &void {
     if heap::CURRENT_BLOCK == null {
         stack::check_init!()
         heap::CURRENT_BLOCK = (stack::MIN + stack::SIZE) as &heap::Block
-        heap::FIRST_BLOCK = heap::CURRENT_BLOCK
     } else {
         heap::CURRENT_BLOCK = heap::CURRENT_BLOCK.next!()
     }
@@ -249,6 +249,8 @@ fn heap::alloc(size: u32): &void {
 fn heap::free(ptr: &void) {
     let block = heap::get_block(ptr)
     block.used = false
+    block.next_free = heap::FREE_LIST
+    heap::FREE_LIST = block
     heap::FREE_BLOCKS += 1
 }
 
@@ -256,22 +258,28 @@ fn heap::get_block(ptr: &void): &heap::Block {
     return (ptr as u32 - sizeof heap::Block) as &heap::Block
 }
 
-// first fit
+// first fit, over the free list only
 fn heap::find_free_block(size: u32): &?heap::Block {
-    let block = heap::FIRST_BLOCK
-    if block == null {
-        return null
-    }
+    let prev = null as &?heap::Block
+    let block = heap::FREE_LIST
+
     loop {
-        if !block.used && block.size >= size {
+        if block == null {
+            return null
+        }
+        if block.size >= size {
+            if prev == null {
+                heap::FREE_LIST = block.next_free
+            } else {
+                prev.next_free = block.next_free
+            }
             return block
         }
-        if block as u32 == heap::CURRENT_BLOCK as u32 {
-            break
-        }
-        block = block.next!()
+
+        prev = block
+        block = block.next_free
     }
-    return null
+    @unreachable()
 }
 
 // arena allocator

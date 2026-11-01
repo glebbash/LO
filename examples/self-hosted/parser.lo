@@ -1181,7 +1181,7 @@ fn Parser::parse_code_expr_postfix(
 
             loc.end_pos = self.prev().loc.end_pos
 
-            return Ok(CodeExpr::InlineFnMethodCall(self.ast_arena.new!(InlineFnMethodCallExpr {
+            return Ok(CodeExpr::InlineMethodCall(self.ast_arena.new!(InlineMethodCallExpr {
                 id: self.next_expr_id(),
                 lhs: primary,
                 field_name: *method_name,
@@ -1256,7 +1256,7 @@ fn Parser::parse_code_expr_postfix(
 
         loc.end_pos = self.prev().loc.end_pos
 
-        return Ok(CodeExpr::ExprPipe(self.ast_arena.new!(ExprPipeExpr {
+        return Ok(CodeExpr::Pipe(self.ast_arena.new!(PipeExpr {
             id: self.next_expr_id(),
             lhs: primary,
             rhs: rhs,
