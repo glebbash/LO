@@ -1542,11 +1542,11 @@ async function commandTest() {
 
             const files = [
                 "out-of-order-defs",
-                // "const-context",
-                // "enum-payload-compare",
-                // "fault-tolerance",
-                // "forbid-memory",
-                // "include-redefinition",
+                "const-context",
+                "enum-payload-compare",
+                "fault-tolerance",
+                "forbid-memory",
+                "include-redefinition",
                 // "incompatible-operator",
                 // "infer-arity",
                 // "infer-not-named",

@@ -568,7 +568,32 @@ fn Typer::collect_included_symbols_(
                 included_symbol.name = self.alloc_str(included_symbol_name)
             }
 
-            // TODO: port (report redefinition if included_symbol conflicts with an existing one)
+            let existing_symbol = null as &?TySymbol
+            for &candidate in includer.symbols.iter!() {
+                if candidate.name.equals(included_symbol.name) {
+                    existing_symbol = candidate
+                    break
+                }
+            }
+
+            if existing_symbol != null {
+                let existing = *existing_symbol
+
+                if existing.ctx_id != included_symbol.ctx_id {
+                    let message = String::from_str_in(self.registry.error_arena, "Cannot redefine ")
+                    do message.push_str(it) with (
+                        existing.name,
+                        ", already defined at ",
+                        included_symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: existing.loc,
+                    }))
+                    continue
+                }
+            }
 
             includer.add_symbol(included_symbol)
         }
@@ -1124,7 +1149,12 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 @unreachable()
             }
 
-            // TODO: port
+            if !let_expr.is_inline {
+                let const_result = self.get_const_value_or_err(ctx, let_expr.value)
+                if const_result.err as u32 != 0 {
+                    return
+                }
+            }
 
             let value_type_id = self.type_code_expr_and_load(ctx, let_expr.value) catch err {
                 self.report_error(err)
@@ -1425,8 +1455,26 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
             }
 
             if intrinsic.fn_name.repr.equals("forbid_memory") {
-                // TODO: port
-                todo!()
+                if self.registry.memory_info != null {
+                    let existing_memory = *self.registry.memory_info
+
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot both forbid and define a memory, defined at ",
+                    )
+                    message.push_str(
+                        existing_memory.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                self.forbid_memory_loc = heap::new!(intrinsic.fn_name.loc)
+                continue
             }
 
             if intrinsic.fn_name.repr.equals("inspect_stats") {
@@ -3345,8 +3393,7 @@ fn Typer::get_binary_op_kind(
         signed = true
     } else if match Type::Enum(enum_type) = operand_type {
         if !self.get_type(self.registry.enums.at!(enum_type.enum_index).variant_type_id).equals(Type::Void) {
-            // TODO: port
-            todo!()
+            return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
         }
         // signed = false
     } else {
@@ -3505,6 +3552,21 @@ fn Typer::get_binary_op_kind(
     }
 
     todo!()
+
+    fn incompatible_op_err(typer: &Typer, ctx: &TyContext, op_type: Type, op_loc: Loc): &Error {
+        let message = String::new_in(typer.registry.error_arena, 32)
+        do message.push_str(it) with (
+            "Operator `",
+            op_loc.read_span(typer.registry.modules.get!(ctx.module_id).source),
+            "` is incompatible with operands of type ",
+            typer.registry.fmt(op_type),
+        )
+
+        return typer.registry.error_arena.new!(Error {
+            message: message,
+            loc: op_loc,
+        })
+    }
 }
 
 fn Typer::type_fn_call(
@@ -4455,7 +4517,18 @@ fn Typer::define_symbol(
 
     let existing_symbol = self.get_symbol(ctx, symbol_name)
     if existing_symbol != null && existing_symbol.ctx_id == ctx.id {
-        // TODO: port
+        let message = String::from_str_in(self.registry.error_arena, "Cannot redefine ")
+        do message.push_str(it) with (
+            symbol_name,
+            ", previously defined at ",
+            existing_symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        self.report_error(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: symbol_loc,
+        }))
+        return false
     }
 
     ctx.add_symbol(TySymbol {
