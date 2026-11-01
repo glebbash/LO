@@ -621,7 +621,13 @@ fn Typer::get_struct_field_info(
     lhs_type: Type,
     field_access: &FieldAccessExpr,
 ): Result(StructFieldInfo, &Error) {
-    // TODO: port Pointer/Container/Seg/Result/Enum special cases
+    if match Type::Pointer(ptr) = lhs_type {
+        if !ptr.is_sequence {
+            lhs_type = registry.get_type(ptr.pointee)
+        }
+    }
+
+    // TODO: port Container/Seg/Result/Enum special cases
 
     match Type::Struct(struct_type) = lhs_type else {
         let message = String::from_str_in(registry.error_arena, "Cannot get field '")
@@ -1282,6 +1288,11 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::NullLiteral(null_literal) = expr {
+        self.store_type(ctx, null_literal.id, Type::Null)
+        return Ok()
+    }
+
     if match CodeExpr::StringLiteral(str_literal) = expr {
         self.process_memory_op(str_literal.loc)
 
@@ -1918,6 +1929,51 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             return Ok()
         }
 
+        if prefix_op.op_tag == PrefixOpTag::Positive || prefix_op.op_tag == PrefixOpTag::Negative {
+            let expr_type = self.get_type(expr_type_id)
+
+            if match Type::U8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::I8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::U16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::I16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::U32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::I32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::U64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+            if match Type::I64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Integer expected. Got ")
+            message.push_str(self.registry.fmt(expr_type))
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: prefix_op.op_loc,
+            }))
+        }
+
         // TODO: port
         todo!()
     }
@@ -2028,11 +2084,27 @@ fn Typer::get_binary_op_kind(
     let signed = false
     let wasm_op_type = WasmType::I32
 
-    // TODO: port
-    if !operand_type.equals(Type::Bool) {
-        match Type::U32(_) = operand_type else {
-            todo!()
-        }
+    if match Type::Null(_) = operand_type {
+        // signed = false
+    } else if match Type::Bool(_) = operand_type {
+        // signed = false
+    } else if match Type::U8(_) = operand_type {
+        // signed = false
+    } else if match Type::U16(_) = operand_type {
+        // signed = false
+    } else if match Type::U32(_) = operand_type {
+        // signed = false
+    } else if match Type::Pointer(_) = operand_type {
+        // signed = false
+    } else if match Type::I8(_) = operand_type {
+        signed = true
+    } else if match Type::I16(_) = operand_type {
+        signed = true
+    } else if match Type::I32(_) = operand_type {
+        signed = true
+    } else {
+        // TODO: port
+        todo!()
     }
 
     // TODO: port
@@ -2057,6 +2129,12 @@ fn Typer::get_binary_op_kind(
         }
         if op_tag == InfixOpTag::Mul {
             return Ok(WasmBinaryOpKind::I32_MUL)
+        }
+        if op_tag == InfixOpTag::Mod {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_REM_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_REM_U)
         }
         if op_tag == InfixOpTag::And {
             return Ok(WasmBinaryOpKind::I32_AND)
@@ -2667,6 +2745,26 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
     if match Type::U32(_) = type_ {
         if layout.primitives != null {
             layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::I32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::Null(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(Type::U32)
         }
         layout.primitives_count += 1
         layout.alignment = u32::max!(layout.alignment, 4)
