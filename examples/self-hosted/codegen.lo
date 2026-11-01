@@ -796,6 +796,24 @@ fn Codegen::codegen(
             return
         }
 
+        if call.fn_name.repr.equals("embed_file") {
+            match CodeExpr::StringLiteral(str_literal) = call.args.items.get!(0) else {
+                @unreachable()
+            }
+
+            let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc)
+            let stored_bytes = self.registry.stored_bytes.at!(expr_info)
+
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.ptr as i32 }),
+            ))
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
+            ))
+
+            return
+        }
+
         if call.fn_name.repr.equals("seg") {
             for arg in call.args.items.iter!() {
                 self.codegen(ctx, instrs, arg)
@@ -1394,6 +1412,16 @@ fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): Result(VarI
             })))
         }
 
+        if value_info.kind == ValueKind::EnumConstructor {
+            let enum_ctor = self.registry.enum_ctors.at!(value_info.col_index)
+            let enum_variant = self.registry.enums.at!(enum_ctor.enum_index).variants.at!(enum_ctor.variant_index)
+
+            return Ok(VarInfo::PayloadlessEnum(heap::new!(VarInfoPayloadlessEnum {
+                variant_tag_value: enum_variant.variant_tag_value as i32,
+                variant_type_id: enum_variant.variant_type_id,
+            })))
+        }
+
         todo!()
     }
 
@@ -1522,6 +1550,14 @@ fn Codegen::codegen_var_get(
         self.codegen(ctx, instrs, const_var.const_def.expr)
 
         self.exit_scope(ctx)
+        return
+    }
+
+    if match VarInfo::PayloadlessEnum(payloadless_enum) = var {
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: payloadless_enum.variant_tag_value }),
+        ))
+        self.codegen_default_value(ctx, instrs, self.get_type(payloadless_enum.variant_type_id))
         return
     }
 
@@ -1731,7 +1767,75 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
+    if match Type::I8(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32_8,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32I8,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::U16(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32_16,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32U16,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::I16(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32_16,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32I16,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
     if match Type::U32(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::I32(_) = pointee_type {
         if is_store {
             instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
                 kind: WasmStoreKind::I32,

@@ -2173,6 +2173,56 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             return Ok()
         }
 
+        if call.fn_name.repr.equals("embed_file") {
+            self.store_type(ctx, call.id, Type::Seg(heap::new!(SegType { item: self.intern_type(Type::U8) })))
+
+            if call.type_args.len != 0 || call.args.items.len != 1 {
+                return Err(bad_args(self.registry.error_arena, call))
+            }
+
+            match CodeExpr::StringLiteral(str_literal) = call.args.items.get!(0) else {
+                return Err(bad_args(self.registry.error_arena, call))
+            }
+
+            let absolute_path = self.registry.resolve_path(str_literal.value.as_str(), call.fn_name.loc)
+
+            let bytes = fs::read_file(absolute_path.as_str()) catch err {
+                let message = String::new_in(self.registry.error_arena, 64)
+                do message.push_str(it) with (
+                    "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
+                    err.to_tmp_str!(),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.args.items.get!(0).loc(),
+                }))
+            }
+
+            let bytes_info = self.append_data(bytes.as_str().iter!())
+
+            self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len)
+            self.registry.stored_bytes.push!(StoredExprBytes {
+                info: bytes_info,
+                expr_type_id: *self.registry.str_literal_type_id,
+            })
+
+            return Ok()
+
+            fn bad_args(arena: &Arena, call: &InlineFnCallExpr): &Error {
+                let message = String::from_str_in(arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(relative_file_path: str): &*u8`",
+                )
+
+                return arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                })
+            }
+        }
+
         if call.fn_name.repr.equals("inline_fn_call_loc") {
             let inline_fn_call_loc = null as &?Loc
 
@@ -3170,6 +3220,12 @@ fn Typer::get_binary_op_kind(
         signed = true
     } else if match Type::U64(_) = operand_type {
         wasm_op_type = WasmType::I64
+    } else if match Type::Enum(enum_type) = operand_type {
+        if !self.get_type(self.registry.enums.at!(enum_type.enum_index).variant_type_id).equals(Type::Void) {
+            // TODO: port
+            todo!()
+        }
+        // signed = false
     } else {
         // TODO: port
         todo!()
@@ -3231,8 +3287,17 @@ fn Typer::get_binary_op_kind(
         if op_tag == InfixOpTag::And {
             return Ok(WasmBinaryOpKind::I32_AND)
         }
+        if op_tag == InfixOpTag::BitAnd {
+            return Ok(WasmBinaryOpKind::I32_AND)
+        }
         if op_tag == InfixOpTag::Or {
             return Ok(WasmBinaryOpKind::I32_OR)
+        }
+        if op_tag == InfixOpTag::BitOr {
+            return Ok(WasmBinaryOpKind::I32_OR)
+        }
+        if op_tag == InfixOpTag::ShiftLeft {
+            return Ok(WasmBinaryOpKind::I32_SHL)
         }
         if op_tag == InfixOpTag::ShiftRight {
             if signed {
@@ -3648,8 +3713,45 @@ fn Typer::get_value_info(
         })
     }
 
-    // TODO: port
-    todo!()
+    if symbol.kind == TySymbolKind::EnumConstructor {
+        let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+        let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+        let enum_variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+        if enum_variant.has_payload {
+            let message = String::from_str_in(self.registry.error_arena, "Cannot construct ")
+            do message.push_str(it) with (
+                var_name.repr,
+                ", expected payload of type ",
+                self.registry.fmt(self.get_type(enum_variant.variant_type_id)),
+            )
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: var_name.loc,
+            }))
+        }
+
+        let var_type = Type::Enum(heap::new!(EnumType {
+            enum_index: enum_ctor.enum_index,
+        }))
+
+        // TODO: port inspection
+
+        return Ok(ValueInfo {
+            kind: ValueKind::EnumConstructor,
+            col_index: symbol.col_index,
+            type_id: self.intern_type(var_type),
+        })
+    }
+
+    let message = String::from_str_in(self.registry.error_arena, "Expected variable, found ")
+    message.push_str(var_name.repr)
+
+    return Err(self.registry.error_arena.new!(Error {
+        message: message,
+        loc: var_name.loc,
+    }))
 }
 
 fn Typer::process_var_write(&self, ctx: &TyContext, lhs: CodeExpr): Result(void, &Error) {
@@ -4080,12 +4182,75 @@ fn Typer::load_type(&self, ctx: &TyContext, expr: CodeExpr): &?TypeId {
 }
 
 fn Typer::get_const_value_or_err(&self, ctx: &TyContext, expr: CodeExpr): Result(CodeExpr, &VoidError) {
+    if match CodeExpr::BoolLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::CharLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::NullLiteral(_) = expr {
+        return Ok(expr)
+    }
     if match CodeExpr::IntLiteral(_) = expr {
         return Ok(expr)
     }
+    if match CodeExpr::StringLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::StructLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::ResultLiteral(_) = expr {
+        return Ok(expr)
+    }
 
-    // TODO: port
-    todo!()
+    if match CodeExpr::IntrinsicCall(call) = expr {
+        if call.fn_name.repr.equals("data_size") {
+            return Ok(expr)
+        }
+    }
+
+    if match CodeExpr::Ident(ident_expr) = expr {
+        let symbol = self.get_symbol(ctx, ident_expr.repr)
+        if symbol == null {
+            return none_and_report(self, expr)
+        }
+
+        if symbol.kind == TySymbolKind::Const {
+            return Ok(self.registry.constants.get!(symbol.col_index).expr)
+        }
+        if symbol.kind == TySymbolKind::EnumConstructor {
+            return Ok(expr)
+        }
+        return none_and_report(self, expr)
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Positive {
+            if match CodeExpr::IntLiteral(_) = prefix_op.expr {
+                return Ok(expr)
+            }
+        }
+
+        return none_and_report(self, expr)
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        return self.get_const_value_or_err(ctx, cast.expr)
+    }
+
+    return none_and_report(self, expr)
+
+    fn none_and_report(typer: &Typer, expr: CodeExpr): Result(CodeExpr, &VoidError) {
+        typer.report_error(typer.registry.error_arena.new!(Error {
+            message: String::from_str_in(typer.registry.error_arena, "Expression not allowed in const context"),
+            loc: expr.loc(),
+        }))
+        return Err(VoidError::VALUE)
+    }
 }
 
 fn Typer::store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: Type) {
@@ -4153,7 +4318,26 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
+    if match Type::I8(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.byte_size = Typer::align(layout.byte_size, 1) + 1
+        return
+    }
+
     if match Type::U16(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 2)
+        layout.byte_size = Typer::align(layout.byte_size, 2) + 2
+        return
+    }
+
+    if match Type::I16(_) = type_ {
         if layout.primitives != null {
             layout.primitives.push!(type_)
         }
@@ -4565,7 +4749,19 @@ fn Typer::push_const_expr_bytes(
     item: CodeExpr,
     item_type: Type,
 ): Result(void, &Error) {
+    if match CodeExpr::Cast(cast) = item {
+        return self.push_const_expr_bytes(output, cast.expr, item_type)
+    }
+    if match CodeExpr::Paren(paren) = item {
+        return self.push_const_expr_bytes(output, paren.expr, item_type)
+    }
+
     if match CodeExpr::IntLiteral(int) = item {
+        if match Type::U8(_) = item_type {
+            output.push!(int.value as u8)
+            return Ok()
+        }
+
         match Type::U32(_) = item_type else {
             // TODO: port other Type variants
             todo!()

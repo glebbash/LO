@@ -1070,9 +1070,9 @@ async function commandTest() {
                 "examples/test/demos/aoc2020/5-part2.lo",
                 "examples/test/demos/aoc2023/1.lo",
                 "examples/test/demos/aoc2023/1-part2.lo",
-                // "examples/test/demos/wasm4/src/blink.lo",
-                // "examples/test/demos/wasm4/src/dark-maze.lo",
-                // "examples/test/demos/wasm4/src/slasher.lo",
+                "examples/test/demos/wasm4/src/blink.lo",
+                "examples/test/demos/wasm4/src/dark-maze.lo",
+                "examples/test/demos/wasm4/src/slasher.lo",
                 // "examples/self-hosted/0-cli.lo",
             ];
 

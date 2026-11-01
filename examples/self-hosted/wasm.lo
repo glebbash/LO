@@ -434,8 +434,9 @@ fn WasmModule::write_import_section(
         if match WasmImportDesc::Func(fn_desc) = import.item_desc {
             WasmModule::write_u8(section, 0x00u8) // fn
             WasmModule::write_u32(section, fn_desc.type_index)
-        } else if match WasmImportDesc::Memory(_) = import.item_desc {
-            todo!()
+        } else if match WasmImportDesc::Memory(memory) = import.item_desc {
+            WasmModule::write_u8(section, 0x02u8) // memory
+            WasmModule::write_limits(section, *memory)
         } else {
             @unreachable()
         }
