@@ -563,7 +563,9 @@ fn Typer::collect_included_symbols_(
             let included_symbol = symbol
 
             if prefix.len() != 0 {
-                // TODO: port
+                let included_symbol_name = String::from_str(prefix.as_str())
+                included_symbol_name.push_str(symbol.name)
+                included_symbol.name = self.alloc_str(included_symbol_name)
             }
 
             // TODO: port (report redefinition if included_symbol conflicts with an existing one)
@@ -5185,6 +5187,54 @@ fn Typer::push_const_expr_bytes(
     if match CodeExpr::IntLiteral(int) = item {
         if match Type::U8(_) = item_type {
             output.push!(int.value as u8)
+            return Ok()
+        }
+        if match Type::I8(_) = item_type {
+            output.push!(int.value as i8 as u8)
+            return Ok()
+        }
+        if match Type::U16(_) = item_type {
+            let value = int.value as u16
+            output.push!(value as u8)
+            output.push!((value >> 8u16) as u8)
+            return Ok()
+        }
+        if match Type::I16(_) = item_type {
+            let value = int.value as i16 as u16
+            output.push!(value as u8)
+            output.push!((value >> 8u16) as u8)
+            return Ok()
+        }
+        if match Type::I32(_) = item_type {
+            let value = int.value as i32 as u32
+            output.push!(value as u8)
+            output.push!((value >> 8) as u8)
+            output.push!((value >> 16) as u8)
+            output.push!((value >> 24) as u8)
+            return Ok()
+        }
+        if match Type::U64(_) = item_type {
+            let value = int.value as u64
+            output.push!(value as u8)
+            output.push!((value >> 8u64) as u8)
+            output.push!((value >> 16u64) as u8)
+            output.push!((value >> 24u64) as u8)
+            output.push!((value >> 32u64) as u8)
+            output.push!((value >> 40u64) as u8)
+            output.push!((value >> 48u64) as u8)
+            output.push!((value >> 56u64) as u8)
+            return Ok()
+        }
+        if match Type::I64(_) = item_type {
+            let value = int.value as u64
+            output.push!(value as u8)
+            output.push!((value >> 8u64) as u8)
+            output.push!((value >> 16u64) as u8)
+            output.push!((value >> 24u64) as u8)
+            output.push!((value >> 32u64) as u8)
+            output.push!((value >> 40u64) as u8)
+            output.push!((value >> 48u64) as u8)
+            output.push!((value >> 56u64) as u8)
             return Ok()
         }
 

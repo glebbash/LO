@@ -1507,9 +1507,9 @@ async function commandTest() {
             "examples/self-hosted/0-cli.lo",
             "examples/test/kitchen-sink.lo",
             "examples/test/inline-let.lo",
-            // "examples/test/wide-for-range.lo",
-            // "examples/test/const-data.lo",
-            // "examples/test/include-alias.lo",
+            "examples/test/wide-for-range.lo",
+            "examples/test/const-data.lo",
+            "examples/test/include-alias.lo",
         ];
 
         describe("compiler matches initial", () => {

@@ -1065,8 +1065,9 @@ fn Codegen::codegen(
         ))
         let is_wide_result = Typer::is_wide_int(self.get_type(counter_type_id))
         if is_wide_result.ok {
-            // TODO: port
-            todo!()
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I64_EQ }),
+            ))
         } else {
             instrs.push!(WasmInstr::BinaryOp(
                 self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_EQ }),
@@ -1108,8 +1109,12 @@ fn Codegen::codegen(
             self.wasm_module.arena.new!(WasmInstrLocalGet { local_index: counter_local_index }),
         ))
         if is_wide_result.ok {
-            // TODO: port
-            todo!()
+            instrs.push!(WasmInstr::I64Const(
+                self.wasm_module.arena.new!(WasmInstrI64Const { value: step as i64 }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I64_ADD }),
+            ))
         } else {
             instrs.push!(WasmInstr::I32Const(
                 self.wasm_module.arena.new!(WasmInstrI32Const { value: step }),
