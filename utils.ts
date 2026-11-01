@@ -1079,11 +1079,12 @@ async function commandTest() {
             "examples/test/demos/wasm4/src/blink.lo",
             "examples/test/demos/wasm4/src/dark-maze.lo",
             "examples/test/demos/wasm4/src/slasher.lo",
+            "examples/self-hosted/0-cli.lo",
             "examples/test/kitchen-sink.lo",
+            "examples/test/inline-let.lo",
             // "examples/test/wide-for-range.lo",
             // "examples/test/const-data.lo",
             // "examples/test/include-alias.lo",
-            "examples/self-hosted/0-cli.lo",
         ];
 
         describe("compiler matches initial", () => {

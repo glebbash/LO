@@ -1,0 +1,16 @@
+// inline lets are compile-time constants, they have no storage of their own
+inline let MAX_PLAYERS = 4
+inline let NAMES = [u32][10, 20, 30]
+
+type Color = struct {
+    r: u32,
+    g: u32,
+    b: u32,
+}
+
+inline let Color::BLACK = Color { r: 0, g: 0, b: 0 }
+
+export fn main(): u32 {
+    let slots = MAX_PLAYERS * 2
+    return slots + NAMES.len + Color::BLACK.r
+}

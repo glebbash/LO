@@ -1526,7 +1526,7 @@ fn Typer::get_fn_param_type(
     todo!()
 }
 
-// TODO!: fix this returning heap alloced and never freed TypeId instead of optional
+// TODO(memory)!: fix this returning heap alloced and never freed TypeId instead of optional
 fn Typer::get_fn_self_type(
     &self,
     ctx: &TyContext,
@@ -1779,9 +1779,21 @@ fn Typer::type_code_expr_and_load(&self, ctx: &TyContext, expr: CodeExpr): Resul
     return Ok(*type_id)
 }
 
-// TODO: port
 fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &Error) {
-    // TODO: port
+    if match CodeExpr::BoolLiteral(bool_literal) = expr {
+        self.store_type(ctx, bool_literal.id, Type::Bool)
+        return Ok()
+    }
+
+    if match CodeExpr::CharLiteral(char_literal) = expr {
+        self.store_type(ctx, char_literal.id, Type::U8)
+        return Ok()
+    }
+
+    if match CodeExpr::NullLiteral(null_literal) = expr {
+        self.store_type(ctx, null_literal.id, Type::Null)
+        return Ok()
+    }
 
     if match CodeExpr::IntLiteral(int_literal) = expr {
         if int_literal.tag == null {
@@ -1807,33 +1819,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         self.store_expr_info(ctx, int_literal.id, tag_type_id)
 
-        return Ok()
-    }
-
-    // TODO: port
-
-    if match CodeExpr::Ident(ident) = expr {
-        let value_info = self.get_value_info(ctx, *ident)?
-        self.registry.value_info.push!(value_info)
-
-        self.store_expr_info(ctx, ident.id, self.registry.value_info.len - 1)
-        return Ok()
-    }
-
-    // TODO: port
-
-    if match CodeExpr::BoolLiteral(bool_literal) = expr {
-        self.store_type(ctx, bool_literal.id, Type::Bool)
-        return Ok()
-    }
-
-    if match CodeExpr::CharLiteral(char_literal) = expr {
-        self.store_type(ctx, char_literal.id, Type::U8)
-        return Ok()
-    }
-
-    if match CodeExpr::NullLiteral(null_literal) = expr {
-        self.store_type(ctx, null_literal.id, Type::Null)
         return Ok()
     }
 
@@ -2072,6 +2057,14 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Ident(ident) = expr {
+        let value_info = self.get_value_info(ctx, *ident)?
+        self.registry.value_info.push!(value_info)
+
+        self.store_expr_info(ctx, ident.id, self.registry.value_info.len - 1)
+        return Ok()
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         self.type_code_expr(ctx, let_expr.value) catch err {
             self.report_error(err)
@@ -2100,6 +2093,455 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
     if match CodeExpr::Fn(_) = expr {
         @unreachable() // skipped in `type_code_block`
+    }
+
+    if match CodeExpr::Assign(assign) = expr {
+        let lhs_result = self.type_code_expr_and_load(ctx, assign.lhs)
+        if lhs_result.err as u32 != 0 {
+            self.report_error(lhs_result.err)
+        }
+
+        let rhs_result = self.type_code_expr_and_load(ctx, assign.rhs)
+        if rhs_result.err as u32 != 0 {
+            self.report_error(rhs_result.err)
+        }
+
+        if lhs_result.err as u32 == 0 && rhs_result.err as u32 == 0 {
+            if !self.is_type_compatible(self.get_type(lhs_result.ok), self.get_type(rhs_result.ok)) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot assign ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(rhs_result.ok)),
+                    " to variable of type ",
+                    self.registry.fmt(self.get_type(lhs_result.ok)),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: assign.op_loc,
+                }))
+            }
+        }
+
+        self.store_type(ctx, assign.id, Type::Void)
+
+        if lhs_result.err as u32 == 0 {
+            self.process_var_write(ctx, assign.lhs)?
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        let lhs_type_id_res = self.type_code_expr_and_load(ctx, infix_op.lhs)
+        let rhs_type_id = self.type_code_expr_and_load(ctx, infix_op.rhs)?
+        let lhs_type_id = lhs_type_id_res?
+
+        if !self.is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id)) {
+            let message = String::new_in(self.registry.error_arena, 16)
+            do message.push_str(it) with (
+                "Operands are not of the same type: lhs = ",
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ", rhs = ",
+                self.registry.fmt(self.get_type(rhs_type_id)),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: infix_op.op_loc,
+            }))
+        }
+
+        let result_type_id = lhs_type_id
+        if infix_op.op_tag == InfixOpTag::Equal \
+            || infix_op.op_tag == InfixOpTag::NotEqual \
+            || infix_op.op_tag == InfixOpTag::Less \
+            || infix_op.op_tag == InfixOpTag::Greater \
+            || infix_op.op_tag == InfixOpTag::LessEqual \
+            || infix_op.op_tag == InfixOpTag::GreaterEqual \
+            || infix_op.op_tag == InfixOpTag::And \
+            || infix_op.op_tag == InfixOpTag::Or
+        {
+            result_type_id = self.intern_type(Type::Bool)
+        }
+        if infix_op.op_tag == InfixOpTag::AddAssign \
+            || infix_op.op_tag == InfixOpTag::SubAssign \
+            || infix_op.op_tag == InfixOpTag::MulAssign \
+            || infix_op.op_tag == InfixOpTag::DivAssign \
+            || infix_op.op_tag == InfixOpTag::ModAssign \
+            || infix_op.op_tag == InfixOpTag::BitAndAssign \
+            || infix_op.op_tag == InfixOpTag::BitOrAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftLeftAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftRightAssign
+        {
+            result_type_id = self.intern_type(Type::Void)
+        }
+
+        let is_compound_assignment = false
+        let base_op = infix_op.op_tag
+
+        let base_op_result = self.get_compound_assignment_base_op(infix_op.op_tag)
+        if base_op_result.err as u32 == 0 {
+            is_compound_assignment = true
+            base_op = base_op_result.ok
+
+            self.process_var_write(ctx, infix_op.lhs)?
+        }
+
+        let op_kind = self.get_binary_op_kind(
+            ctx,
+            base_op,
+            self.get_type(lhs_type_id),
+            infix_op.op_loc,
+        )?
+
+        self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
+        self.registry.binary_op_info.push!(BinaryOpInfo {
+            is_compound_assignment: is_compound_assignment,
+            op_kind: op_kind,
+            result_type_id: result_type_id,
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            ctx.is_expr_referenced = true
+        }
+
+        let expr_type_id = self.type_code_expr_and_load(ctx, prefix_op.expr)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if prefix_op.op_tag == PrefixOpTag::Not {
+            if Typer::count_primitive_components(self.registry, self.get_type(expr_type_id)) != 1 {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot apply not operation to expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Bool)
+            return Ok()
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            match Type::Pointer(ptr) = self.get_type(expr_type_id) else {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot dereference expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.process_memory_op(prefix_op.loc)
+
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    "<deref>: ",
+                    self.registry.fmt(self.get_type(ptr.pointee)),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                    linked_loc: null,
+                })
+            }
+
+            self.store_expr_info(ctx, prefix_op.id, ptr.pointee)
+            return Ok()
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Positive || prefix_op.op_tag == PrefixOpTag::Negative {
+            let expr_type = self.get_type(expr_type_id)
+
+            if match Type::U8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::I8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::U16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::I16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::U32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::I32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::U64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+            if match Type::I64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Integer expected. Got ")
+            message.push_str(self.registry.fmt(expr_type))
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: prefix_op.op_loc,
+            }))
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            let var = self.get_variable_kind(ctx, prefix_op.expr) catch _ {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            if var != VariableKind::ReadWriteStored {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Pointer(heap::new!(PointerType {
+                pointee: expr_type_id,
+                is_sequence: false,
+                is_nullable: false,
+            })))
+
+            return Ok()
+        }
+
+        // TODO: port
+        todo!()
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        let castee_result = self.type_code_expr_and_load(ctx, cast.expr)
+
+        let casted_to_type_id = self.build_type(ctx, cast.casted_to)?
+        let casted_to_type = self.get_type(casted_to_type_id)
+
+        if castee_result.err as u32 != 0 {
+            self.report_error(castee_result.err)
+        } else {
+            let castee_type = self.get_type(castee_result.ok)
+
+            let castee_type_components = self.get_primitives(castee_type)
+            let casted_to_type_components = self.get_primitives(casted_to_type)
+
+            let noop_local_cast = Typer::is_noop_cast(castee_type_components, casted_to_type_components)
+
+            let single_int_cast = false
+            if castee_type_components.len == 1 && casted_to_type_components.len == 1 {
+                let p1_wide = Typer::is_wide_int(castee_type_components.get!(0))
+                let p2_wide = Typer::is_wide_int(casted_to_type_components.get!(0))
+                single_int_cast = p1_wide.err as u32 == 0 && p2_wide.err as u32 == 0
+            }
+
+            if !(single_int_cast || noop_local_cast) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot cast from ")
+                do message.push_str(it) with (
+                    self.registry.fmt(castee_type),
+                    " to ",
+                    self.registry.fmt(casted_to_type),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: cast.expr.loc(),
+                }))
+            }
+        }
+
+        self.store_type(ctx, cast.id, casted_to_type)
+
+        return Ok()
+    }
+
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        ctx.is_expr_referenced = false
+
+        let lhs_type_id = self.type_code_expr_and_load(ctx, field_access.lhs)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if match Type::Pointer(_) = self.get_type(lhs_type_id) {
+            if !ctx.is_expr_referenced {
+                self.process_memory_op(field_access.field_name.loc)
+            }
+        }
+
+        let field = Typer::get_struct_field_info(self.registry, self.get_type(lhs_type_id), field_access)?
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ".",
+                field_access.field_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(field.field_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: field_access.field_name.loc,
+                linked_loc: field.loc,
+            })
+        }
+
+        self.store_type(ctx, field_access.id, self.get_type(field.field_type_id))
+        return Ok()
+    }
+
+    if match CodeExpr::FnCall(call) = expr {
+        let symbol = self.get_symbol(ctx, call.fn_name.repr)
+        if symbol != null && symbol.kind == TySymbolKind::EnumConstructor {
+            let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+            let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+            let variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    " // ",
+                    enum_ctor.variant_index.to_tmp_str!(),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: call.fn_name.loc,
+                    linked_loc: &enum_ctor.loc,
+                })
+            }
+
+            for arg in call.args.items.iter!() {
+                self.report_if_err!(self.type_code_expr(ctx, arg))
+            }
+
+            if call.args.items.len != 1 {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Non-void enum constructors require exactly one argument",
+                    ),
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            let expr_type_id_ptr = self.load_type(ctx, call.args.items.get!(0))
+            if expr_type_id_ptr != null \
+                && !self.is_type_compatible(self.get_type(variant.variant_type_id), self.get_type(*expr_type_id_ptr))
+            {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid enum payload: ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(*expr_type_id_ptr)),
+                    ", expected: ",
+                    self.registry.fmt(self.get_type(variant.variant_type_id)),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            self.store_expr_info(ctx, call.id, self.registry.call_info.len)
+            self.registry.call_info.push!(CallInfo {
+                value: CallInfoValue::EnumCtor(enum_ctor.variant_index),
+                return_type_id: self.intern_type(Type::Enum(heap::new!(EnumType {
+                    enum_index: enum_ctor.enum_index,
+                }))),
+            })
+
+            return Ok()
+        }
+
+        self.type_fn_call(
+            ctx,
+            call.fn_name.repr,
+            null,
+            call.args.items,
+            call.id,
+            call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::MethodCall(call) = expr {
+        let lhs_type_id = self.type_code_expr_and_load(ctx, call.lhs)?
+        let fn_name = self.get_fn_name_from_method(self.get_type(lhs_type_id), call.field_name.repr)
+
+        self.type_fn_call(
+            ctx,
+            fn_name,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::InlineFnCall(call) = expr {
+        self.type_inline_fn_call(
+            ctx,
+            call.fn_name.repr,
+            call.type_args,
+            null,
+            call.args.items,
+            call.id,
+            call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::InlineMethodCall(call) = expr {
+        let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, call.lhs)?)
+        let inline_fn_name = self.get_fn_name_from_method(lhs_type, call.field_name.repr)
+
+        self.type_inline_fn_call(
+            ctx,
+            inline_fn_name,
+            call.type_args,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
+        )?
+        return Ok()
     }
 
     if match CodeExpr::IntrinsicCall(call) = expr {
@@ -2387,202 +2829,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         }))
     }
 
-    if match CodeExpr::InfixOp(infix_op) = expr {
-        let lhs_type_id_res = self.type_code_expr_and_load(ctx, infix_op.lhs)
-        let rhs_type_id = self.type_code_expr_and_load(ctx, infix_op.rhs)?
-        let lhs_type_id = lhs_type_id_res?
-
-        if !self.is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id)) {
-            let message = String::new_in(self.registry.error_arena, 16)
-            do message.push_str(it) with (
-                "Operands are not of the same type: lhs = ",
-                self.registry.fmt(self.get_type(lhs_type_id)),
-                ", rhs = ",
-                self.registry.fmt(self.get_type(rhs_type_id)),
-            )
-
-            self.report_error(self.registry.error_arena.new!(Error {
-                message: message,
-                loc: infix_op.op_loc,
-            }))
-        }
-
-        let result_type_id = lhs_type_id
-        if infix_op.op_tag == InfixOpTag::Equal \
-            || infix_op.op_tag == InfixOpTag::NotEqual \
-            || infix_op.op_tag == InfixOpTag::Less \
-            || infix_op.op_tag == InfixOpTag::Greater \
-            || infix_op.op_tag == InfixOpTag::LessEqual \
-            || infix_op.op_tag == InfixOpTag::GreaterEqual \
-            || infix_op.op_tag == InfixOpTag::And \
-            || infix_op.op_tag == InfixOpTag::Or
-        {
-            result_type_id = self.intern_type(Type::Bool)
-        }
-        if infix_op.op_tag == InfixOpTag::AddAssign \
-            || infix_op.op_tag == InfixOpTag::SubAssign \
-            || infix_op.op_tag == InfixOpTag::MulAssign \
-            || infix_op.op_tag == InfixOpTag::DivAssign \
-            || infix_op.op_tag == InfixOpTag::ModAssign \
-            || infix_op.op_tag == InfixOpTag::BitAndAssign \
-            || infix_op.op_tag == InfixOpTag::BitOrAssign \
-            || infix_op.op_tag == InfixOpTag::ShiftLeftAssign \
-            || infix_op.op_tag == InfixOpTag::ShiftRightAssign
-        {
-            result_type_id = self.intern_type(Type::Void)
-        }
-
-        let is_compound_assignment = false
-        let base_op = infix_op.op_tag
-
-        let base_op_result = self.get_compound_assignment_base_op(infix_op.op_tag)
-        if base_op_result.err as u32 == 0 {
-            is_compound_assignment = true
-            base_op = base_op_result.ok
-
-            self.process_var_write(ctx, infix_op.lhs)?
-        }
-
-        let op_kind = self.get_binary_op_kind(
-            ctx,
-            base_op,
-            self.get_type(lhs_type_id),
-            infix_op.op_loc,
-        )?
-
-        self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
-        self.registry.binary_op_info.push!(BinaryOpInfo {
-            is_compound_assignment: is_compound_assignment,
-            op_kind: op_kind,
-            result_type_id: result_type_id,
-        })
-
-        return Ok()
-    }
-
-    // TODO: port
-
-    if match CodeExpr::FnCall(call) = expr {
-        let symbol = self.get_symbol(ctx, call.fn_name.repr)
-        if symbol != null && symbol.kind == TySymbolKind::EnumConstructor {
-            let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
-            let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
-            let variant = enum_def.variants.at!(enum_ctor.variant_index)
-
-            if self.reporter.in_inspection_mode {
-                let message = String::new_in(self.reporter.inspection_arena, 32)
-                do message.push_str(it) with (
-                    call.fn_name.repr,
-                    " // ",
-                    enum_ctor.variant_index.to_tmp_str!(),
-                )
-
-                self.reporter.print_inspection(InspectInfo {
-                    message: message,
-                    loc: call.fn_name.loc,
-                    linked_loc: &enum_ctor.loc,
-                })
-            }
-
-            for arg in call.args.items.iter!() {
-                self.report_if_err!(self.type_code_expr(ctx, arg))
-            }
-
-            if call.args.items.len != 1 {
-                return Err(self.registry.error_arena.new!(Error {
-                    message: String::from_str_in(
-                        self.registry.error_arena,
-                        "Non-void enum constructors require exactly one argument",
-                    ),
-                    loc: call.fn_name.loc,
-                }))
-            }
-
-            let expr_type_id_ptr = self.load_type(ctx, call.args.items.get!(0))
-            if expr_type_id_ptr != null \
-                && !self.is_type_compatible(self.get_type(variant.variant_type_id), self.get_type(*expr_type_id_ptr))
-            {
-                let message = String::from_str_in(self.registry.error_arena, "Invalid enum payload: ")
-                do message.push_str(it) with (
-                    self.registry.fmt(self.get_type(*expr_type_id_ptr)),
-                    ", expected: ",
-                    self.registry.fmt(self.get_type(variant.variant_type_id)),
-                )
-
-                return Err(self.registry.error_arena.new!(Error {
-                    message: message,
-                    loc: call.fn_name.loc,
-                }))
-            }
-
-            self.store_expr_info(ctx, call.id, self.registry.call_info.len)
-            self.registry.call_info.push!(CallInfo {
-                value: CallInfoValue::EnumCtor(enum_ctor.variant_index),
-                return_type_id: self.intern_type(Type::Enum(heap::new!(EnumType {
-                    enum_index: enum_ctor.enum_index,
-                }))),
-            })
-
-            return Ok()
-        }
-
-        self.type_fn_call(
-            ctx,
-            call.fn_name.repr,
-            null,
-            call.args.items,
-            call.id,
-            call.fn_name.loc,
-        )?
-        return Ok()
-    }
-
-    if match CodeExpr::MethodCall(call) = expr {
-        let lhs_type_id = self.type_code_expr_and_load(ctx, call.lhs)?
-        let fn_name = self.get_fn_name_from_method(self.get_type(lhs_type_id), call.field_name.repr)
-
-        self.type_fn_call(
-            ctx,
-            fn_name,
-            ref!(call.lhs),
-            call.args.items,
-            call.id,
-            call.field_name.loc,
-        )?
-        return Ok()
-    }
-
-    if match CodeExpr::InlineFnCall(call) = expr {
-        self.type_inline_fn_call(
-            ctx,
-            call.fn_name.repr,
-            call.type_args,
-            null,
-            call.args.items,
-            call.id,
-            call.fn_name.loc,
-        )?
-        return Ok()
-    }
-
-    if match CodeExpr::InlineMethodCall(call) = expr {
-        let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, call.lhs)?)
-        let inline_fn_name = self.get_fn_name_from_method(lhs_type, call.field_name.repr)
-
-        self.type_inline_fn_call(
-            ctx,
-            inline_fn_name,
-            call.type_args,
-            ref!(call.lhs),
-            call.args.items,
-            call.id,
-            call.field_name.loc,
-        )?
-        return Ok()
-    }
-
-    // TODO: port
-
     if match CodeExpr::Return(return_expr) = expr {
         self.store_type(ctx, return_expr.id, Type::Never)
 
@@ -2867,263 +3113,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
-    if match CodeExpr::Assign(assign) = expr {
-        let lhs_result = self.type_code_expr_and_load(ctx, assign.lhs)
-        if lhs_result.err as u32 != 0 {
-            self.report_error(lhs_result.err)
-        }
-
-        let rhs_result = self.type_code_expr_and_load(ctx, assign.rhs)
-        if rhs_result.err as u32 != 0 {
-            self.report_error(rhs_result.err)
-        }
-
-        if lhs_result.err as u32 == 0 && rhs_result.err as u32 == 0 {
-            if !self.is_type_compatible(self.get_type(lhs_result.ok), self.get_type(rhs_result.ok)) {
-                let message = String::from_str_in(self.registry.error_arena, "Cannot assign ")
-                do message.push_str(it) with (
-                    self.registry.fmt(self.get_type(rhs_result.ok)),
-                    " to variable of type ",
-                    self.registry.fmt(self.get_type(lhs_result.ok)),
-                )
-
-                self.report_error(self.registry.error_arena.new!(Error {
-                    message: message,
-                    loc: assign.op_loc,
-                }))
-            }
-        }
-
-        self.store_type(ctx, assign.id, Type::Void)
-
-        if lhs_result.err as u32 == 0 {
-            self.process_var_write(ctx, assign.lhs)?
-        }
-
-        return Ok()
-    }
-
-    if match CodeExpr::PrefixOp(prefix_op) = expr {
-        let is_ref_prev = ctx.is_expr_referenced
-        if prefix_op.op_tag == PrefixOpTag::Reference {
-            ctx.is_expr_referenced = true
-        }
-
-        let expr_type_id = self.type_code_expr_and_load(ctx, prefix_op.expr)?
-
-        ctx.is_expr_referenced = is_ref_prev
-
-        if prefix_op.op_tag == PrefixOpTag::Not {
-            if Typer::count_primitive_components(self.registry, self.get_type(expr_type_id)) != 1 {
-                let message = String::from_str_in(
-                    self.registry.error_arena,
-                    "Cannot apply not operation to expr of type ",
-                )
-                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
-
-                return Err(self.registry.error_arena.new!(Error {
-                    message: message,
-                    loc: prefix_op.op_loc,
-                }))
-            }
-
-            self.store_type(ctx, prefix_op.id, Type::Bool)
-            return Ok()
-        }
-
-        if prefix_op.op_tag == PrefixOpTag::Dereference {
-            match Type::Pointer(ptr) = self.get_type(expr_type_id) else {
-                let message = String::from_str_in(
-                    self.registry.error_arena,
-                    "Cannot dereference expr of type ",
-                )
-                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
-
-                return Err(self.registry.error_arena.new!(Error {
-                    message: message,
-                    loc: prefix_op.expr.loc(),
-                }))
-            }
-
-            self.process_memory_op(prefix_op.loc)
-
-            if self.reporter.in_inspection_mode {
-                let message = String::new_in(self.reporter.inspection_arena, 32)
-                do message.push_str(it) with (
-                    "<deref>: ",
-                    self.registry.fmt(self.get_type(ptr.pointee)),
-                )
-
-                self.reporter.print_inspection(InspectInfo {
-                    message: message,
-                    loc: prefix_op.op_loc,
-                    linked_loc: null,
-                })
-            }
-
-            self.store_expr_info(ctx, prefix_op.id, ptr.pointee)
-            return Ok()
-        }
-
-        if prefix_op.op_tag == PrefixOpTag::Positive || prefix_op.op_tag == PrefixOpTag::Negative {
-            let expr_type = self.get_type(expr_type_id)
-
-            if match Type::U8(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I8)
-                return Ok()
-            }
-            if match Type::I8(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I8)
-                return Ok()
-            }
-            if match Type::U16(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I16)
-                return Ok()
-            }
-            if match Type::I16(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I16)
-                return Ok()
-            }
-            if match Type::U32(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I32)
-                return Ok()
-            }
-            if match Type::I32(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I32)
-                return Ok()
-            }
-            if match Type::U64(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I64)
-                return Ok()
-            }
-            if match Type::I64(_) = expr_type {
-                self.store_type(ctx, prefix_op.id, Type::I64)
-                return Ok()
-            }
-
-            let message = String::from_str_in(self.registry.error_arena, "Integer expected. Got ")
-            message.push_str(self.registry.fmt(expr_type))
-
-            return Err(self.registry.error_arena.new!(Error {
-                message: message,
-                loc: prefix_op.op_loc,
-            }))
-        }
-
-        if prefix_op.op_tag == PrefixOpTag::Reference {
-            let var = self.get_variable_kind(ctx, prefix_op.expr) catch _ {
-                return Err(self.registry.error_arena.new!(Error {
-                    message: String::from_str_in(
-                        self.registry.error_arena,
-                        "Invalid reference expression. Only struct reference fields allowed.",
-                    ),
-                    loc: prefix_op.expr.loc(),
-                }))
-            }
-
-            if var != VariableKind::ReadWriteStored {
-                return Err(self.registry.error_arena.new!(Error {
-                    message: String::from_str_in(
-                        self.registry.error_arena,
-                        "Invalid reference expression. Only struct reference fields allowed.",
-                    ),
-                    loc: prefix_op.expr.loc(),
-                }))
-            }
-
-            self.store_type(ctx, prefix_op.id, Type::Pointer(heap::new!(PointerType {
-                pointee: expr_type_id,
-                is_sequence: false,
-                is_nullable: false,
-            })))
-
-            return Ok()
-        }
-
-        // TODO: port
-        todo!()
-    }
-
-    if match CodeExpr::Cast(cast) = expr {
-        let castee_result = self.type_code_expr_and_load(ctx, cast.expr)
-
-        let casted_to_type_id = self.build_type(ctx, cast.casted_to)?
-        let casted_to_type = self.get_type(casted_to_type_id)
-
-        if castee_result.err as u32 != 0 {
-            self.report_error(castee_result.err)
-        } else {
-            let castee_type = self.get_type(castee_result.ok)
-
-            let castee_type_components = self.get_primitives(castee_type)
-            let casted_to_type_components = self.get_primitives(casted_to_type)
-
-            let noop_local_cast = Typer::is_noop_cast(castee_type_components, casted_to_type_components)
-
-            let single_int_cast = false
-            if castee_type_components.len == 1 && casted_to_type_components.len == 1 {
-                let p1_wide = Typer::is_wide_int(castee_type_components.get!(0))
-                let p2_wide = Typer::is_wide_int(casted_to_type_components.get!(0))
-                single_int_cast = p1_wide.err as u32 == 0 && p2_wide.err as u32 == 0
-            }
-
-            if !(single_int_cast || noop_local_cast) {
-                let message = String::from_str_in(self.registry.error_arena, "Cannot cast from ")
-                do message.push_str(it) with (
-                    self.registry.fmt(castee_type),
-                    " to ",
-                    self.registry.fmt(casted_to_type),
-                )
-
-                return Err(self.registry.error_arena.new!(Error {
-                    message: message,
-                    loc: cast.expr.loc(),
-                }))
-            }
-        }
-
-        self.store_type(ctx, cast.id, casted_to_type)
-
-        return Ok()
-    }
-
-    if match CodeExpr::FieldAccess(field_access) = expr {
-        let is_ref_prev = ctx.is_expr_referenced
-        ctx.is_expr_referenced = false
-
-        let lhs_type_id = self.type_code_expr_and_load(ctx, field_access.lhs)?
-
-        ctx.is_expr_referenced = is_ref_prev
-
-        if match Type::Pointer(_) = self.get_type(lhs_type_id) {
-            if !ctx.is_expr_referenced {
-                self.process_memory_op(field_access.field_name.loc)
-            }
-        }
-
-        let field = Typer::get_struct_field_info(self.registry, self.get_type(lhs_type_id), field_access)?
-
-        if self.reporter.in_inspection_mode {
-            let message = String::new_in(self.reporter.inspection_arena, 32)
-            do message.push_str(it) with (
-                self.registry.fmt(self.get_type(lhs_type_id)),
-                ".",
-                field_access.field_name.repr,
-                ": ",
-                self.registry.fmt(self.get_type(field.field_type_id)),
-            )
-
-            self.reporter.print_inspection(InspectInfo {
-                message: message,
-                loc: field_access.field_name.loc,
-                linked_loc: field.loc,
-            })
-        }
-
-        self.store_type(ctx, field_access.id, self.get_type(field.field_type_id))
-        return Ok()
-    }
-
     if match CodeExpr::Catch(catch_expr) = expr {
         let expr_type_id = self.type_code_expr_and_load(ctx, catch_expr.lhs)?
         let result = self.assert_catchable_type(self.get_type(expr_type_id), catch_expr.catch_loc)?
@@ -3187,6 +3176,16 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Paren(paren) = expr {
+        self.type_code_expr(ctx, paren.expr)?
+
+        let expr_type_id = self.load_type(ctx, paren.expr)
+        if expr_type_id != null {
+            self.store_expr_info(ctx, paren.id, *expr_type_id)
+        }
+        return Ok()
+    }
+
     if match CodeExpr::DoWith(do_with) = expr {
         self.store_type(ctx, do_with.id, Type::Void)
 
@@ -3247,22 +3246,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
-    if match CodeExpr::Paren(paren) = expr {
-        self.type_code_expr(ctx, paren.expr)?
-
-        let expr_type_id = self.load_type(ctx, paren.expr)
-        if expr_type_id != null {
-            self.store_expr_info(ctx, paren.id, *expr_type_id)
-        }
-        return Ok()
-    }
-
-    if match CodeExpr::Sizeof(sizeof_expr) = expr {
-        self.report_if_err!(self.build_type(ctx, sizeof_expr.type_expr))
-        self.store_type(ctx, sizeof_expr.id, Type::U32)
-        return Ok()
-    }
-
     if match CodeExpr::Pipe(pipe) = expr {
         self.report_if_err!(self.type_code_expr(ctx, pipe.lhs))
 
@@ -3284,9 +3267,13 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
-    // TODO: port
+    if match CodeExpr::Sizeof(sizeof_expr) = expr {
+        self.report_if_err!(self.build_type(ctx, sizeof_expr.type_expr))
+        self.store_type(ctx, sizeof_expr.id, Type::U32)
+        return Ok()
+    }
 
-    todo!()
+    @unreachable()
 }
 
 fn Typer::get_compound_assignment_base_op(&self, op_tag: InfixOpTag): Result(InfixOpTag, &VoidError) {

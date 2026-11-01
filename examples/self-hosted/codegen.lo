@@ -295,8 +295,6 @@ fn Codegen::codegen_all(&self) {
             .initial_value.instrs.set!(0, data_size_instr)
     }
 
-    // TODO: port
-
     if self.registry.memory_info != null {
         let memory = *self.registry.memory_info
 
@@ -359,7 +357,23 @@ fn Codegen::codegen(
     instrs: &Vec(WasmInstr),
     expr: CodeExpr,
 ) {
-    // TODO: port
+    if match CodeExpr::BoolLiteral(bool_literal) = expr {
+        let value = 0 as i32
+        if bool_literal.value {
+            value = 1 as i32
+        }
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: value }),
+        ))
+        return
+    }
+
+    if match CodeExpr::CharLiteral(char_literal) = expr {
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: char_literal.value as i32 }),
+        ))
+        return
+    }
 
     if match CodeExpr::NullLiteral(_) = expr {
         instrs.push!(WasmInstr::I32Const(
@@ -380,24 +394,6 @@ fn Codegen::codegen(
             ))
         }
 
-        return
-    }
-
-    if match CodeExpr::BoolLiteral(bool_literal) = expr {
-        let value = 0 as i32
-        if bool_literal.value {
-            value = 1 as i32
-        }
-        instrs.push!(WasmInstr::I32Const(
-            self.wasm_module.arena.new!(WasmInstrI32Const { value: value }),
-        ))
-        return
-    }
-
-    if match CodeExpr::CharLiteral(char_literal) = expr {
-        instrs.push!(WasmInstr::I32Const(
-            self.wasm_module.arena.new!(WasmInstrI32Const { value: char_literal.value as i32 }),
-        ))
         return
     }
 
@@ -458,6 +454,18 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::Ident(_) = expr {
+        let var = self.var_from_expr(ctx, expr).unwrap!()
+        self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
+    if match CodeExpr::FieldAccess(_) = expr {
+        let var = self.var_from_expr(ctx, expr).unwrap!()
+        self.codegen_var_get(ctx, instrs, var)
+        return
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         if let_expr.is_inline {
             // was handled in typer
@@ -482,113 +490,21 @@ fn Codegen::codegen(
     }
 
     if match CodeExpr::Fn(_) = expr {
-        // nested fn, nothing to emit here
+        // processed fully by typer
         return
     }
 
-    // TODO: port
+    if match CodeExpr::Cast(cast) = expr {
+        self.codegen(ctx, instrs, cast.expr)
 
-    if match CodeExpr::Return(return_expr) = expr {
-        if return_expr.expr != null {
-            self.codegen(ctx, instrs, *return_expr.expr)
+        let castee_type = self.get_expr_type(ctx, cast.expr)
+        let casted_to_type = self.get_type_expr_value(ctx, cast.casted_to)
+
+        let cast_instr = Codegen::get_cast_instr(castee_type, casted_to_type)
+        if cast_instr.err as u32 == 0 {
+            instrs.push!(cast_instr.ok)
         }
 
-        self.emit_deferred_for_return(ctx, instrs)
-        instrs.push!(WasmInstr::Return)
-        return
-    }
-
-    if match CodeExpr::InfixOp(infix_op) = expr {
-        let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc)
-        let op_info = self.registry.binary_op_info.at!(expr_info)
-
-        // short-circuiting AND
-        if infix_op.op_tag == InfixOpTag::And {
-            self.codegen(ctx, instrs, infix_op.lhs)
-            instrs.push!(WasmInstr::BlockStart(
-                self.wasm_module.arena.new!(WasmInstrBlockStart {
-                    block_kind: WasmBlockKind::If,
-                    block_type: WasmBlockType::SingleOut(
-                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
-                            out_type: WasmType::I32,
-                        }),
-                    ),
-                }),
-            ))
-            self.codegen(ctx, instrs, infix_op.rhs)
-            instrs.push!(WasmInstr::Else)
-            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
-            instrs.push!(WasmInstr::BlockEnd)
-            return
-        }
-
-        // short-circuiting OR
-        if infix_op.op_tag == InfixOpTag::Or {
-            self.codegen(ctx, instrs, infix_op.lhs)
-            instrs.push!(WasmInstr::BlockStart(
-                self.wasm_module.arena.new!(WasmInstrBlockStart {
-                    block_kind: WasmBlockKind::If,
-                    block_type: WasmBlockType::SingleOut(
-                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
-                            out_type: WasmType::I32,
-                        }),
-                    ),
-                }),
-            ))
-            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 1 as i32 })))
-            instrs.push!(WasmInstr::Else)
-            self.codegen(ctx, instrs, infix_op.rhs)
-            instrs.push!(WasmInstr::BlockEnd)
-            return
-        }
-
-        if op_info.is_compound_assignment {
-            let var = self.var_from_expr(ctx, infix_op.lhs).unwrap!()
-
-            self.codegen_var_set_prepare(instrs, var)
-            self.codegen_var_get(ctx, instrs, var)
-            self.codegen(ctx, instrs, infix_op.rhs)
-            instrs.push!(WasmInstr::BinaryOp(
-                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
-            ))
-            self.codegen_var_set(ctx, instrs, var)
-            return
-        }
-
-        self.codegen(ctx, instrs, infix_op.lhs)
-        self.codegen(ctx, instrs, infix_op.rhs)
-        instrs.push!(WasmInstr::BinaryOp(
-            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
-        ))
-
-        return
-    }
-
-    if match CodeExpr::Ident(_) = expr {
-        let var = self.var_from_expr(ctx, expr).unwrap!()
-        self.codegen_var_get(ctx, instrs, var)
-        return
-    }
-
-    if match CodeExpr::FieldAccess(_) = expr {
-        let var = self.var_from_expr(ctx, expr).unwrap!()
-        self.codegen_var_get(ctx, instrs, var)
-        return
-    }
-
-    if match CodeExpr::Paren(paren) = expr {
-        self.codegen(ctx, instrs, paren.expr)
-        return
-    }
-
-    if match CodeExpr::Sizeof(sizeof_expr) = expr {
-        let type_ = self.get_type_expr_value(ctx, sizeof_expr.type_expr)
-        let type_layout = ref!(TypeLayout::new())
-        Typer::get_type_layout(self.registry, type_, type_layout)
-
-        instrs.push!(WasmInstr::I32Const(
-            self.wasm_module.arena.new!(WasmInstrI32Const { value: type_layout.byte_size as i32 }),
-        ))
         return
     }
 
@@ -686,16 +602,68 @@ fn Codegen::codegen(
         todo!()
     }
 
-    if match CodeExpr::Cast(cast) = expr {
-        self.codegen(ctx, instrs, cast.expr)
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        let expr_info = self.get_expr_info(ctx, infix_op.id, infix_op.loc)
+        let op_info = self.registry.binary_op_info.at!(expr_info)
 
-        let castee_type = self.get_expr_type(ctx, cast.expr)
-        let casted_to_type = self.get_type_expr_value(ctx, cast.casted_to)
-
-        let cast_instr = Codegen::get_cast_instr(castee_type, casted_to_type)
-        if cast_instr.err as u32 == 0 {
-            instrs.push!(cast_instr.ok)
+        // short-circuiting AND
+        if infix_op.op_tag == InfixOpTag::And {
+            self.codegen(ctx, instrs, infix_op.lhs)
+            instrs.push!(WasmInstr::BlockStart(
+                self.wasm_module.arena.new!(WasmInstrBlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::SingleOut(
+                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
+                            out_type: WasmType::I32,
+                        }),
+                    ),
+                }),
+            ))
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::Else)
+            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+            instrs.push!(WasmInstr::BlockEnd)
+            return
         }
+
+        // short-circuiting OR
+        if infix_op.op_tag == InfixOpTag::Or {
+            self.codegen(ctx, instrs, infix_op.lhs)
+            instrs.push!(WasmInstr::BlockStart(
+                self.wasm_module.arena.new!(WasmInstrBlockStart {
+                    block_kind: WasmBlockKind::If,
+                    block_type: WasmBlockType::SingleOut(
+                        self.wasm_module.arena.new!(WasmBlockTypeSingleOut {
+                            out_type: WasmType::I32,
+                        }),
+                    ),
+                }),
+            ))
+            instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 1 as i32 })))
+            instrs.push!(WasmInstr::Else)
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::BlockEnd)
+            return
+        }
+
+        if op_info.is_compound_assignment {
+            let var = self.var_from_expr(ctx, infix_op.lhs).unwrap!()
+
+            self.codegen_var_set_prepare(instrs, var)
+            self.codegen_var_get(ctx, instrs, var)
+            self.codegen(ctx, instrs, infix_op.rhs)
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
+            ))
+            self.codegen_var_set(ctx, instrs, var)
+            return
+        }
+
+        self.codegen(ctx, instrs, infix_op.lhs)
+        self.codegen(ctx, instrs, infix_op.rhs)
+        instrs.push!(WasmInstr::BinaryOp(
+            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: op_info.op_kind }),
+        ))
 
         return
     }
@@ -841,6 +809,32 @@ fn Codegen::codegen(
         self.registry.reporter.abort_due_to_compiler_bug(message.as_str(), call.fn_name.loc)
     }
 
+    if match CodeExpr::Sizeof(sizeof_expr) = expr {
+        let type_ = self.get_type_expr_value(ctx, sizeof_expr.type_expr)
+        let type_layout = ref!(TypeLayout::new())
+        Typer::get_type_layout(self.registry, type_, type_layout)
+
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: type_layout.byte_size as i32 }),
+        ))
+        return
+    }
+
+    if match CodeExpr::Paren(paren) = expr {
+        self.codegen(ctx, instrs, paren.expr)
+        return
+    }
+
+    if match CodeExpr::Return(return_expr) = expr {
+        if return_expr.expr != null {
+            self.codegen(ctx, instrs, *return_expr.expr)
+        }
+
+        self.emit_deferred_for_return(ctx, instrs)
+        instrs.push!(WasmInstr::Return)
+        return
+    }
+
     if match CodeExpr::If(if_expr) = expr {
         if match IfCond::Expr(cond_expr) = if_expr.cond {
             self.codegen(ctx, instrs, *cond_expr)
@@ -862,8 +856,6 @@ fn Codegen::codegen(
                 self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_EQ }),
             ))
         }
-
-        // TODO: port
 
         instrs.push!(WasmInstr::BlockStart(
             self.wasm_module.arena.new!(WasmInstrBlockStart {
@@ -889,6 +881,33 @@ fn Codegen::codegen(
         }
 
         instrs.push!(WasmInstr::BlockEnd)
+        return
+    }
+
+    if match CodeExpr::Match(match_expr) = expr {
+        let enum_variant_tag_value = self.codegen_match_header(ctx, instrs, &match_expr.header)
+
+        // pop enum's variant from the stack and compare it to the expected variant
+        // if it's not equal then `else_branch`` must run
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: enum_variant_tag_value }),
+        ))
+        instrs.push!(WasmInstr::BinaryOp(
+            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_NE }),
+        ))
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::If,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        self.enter_scope(ctx, ScopeKind::Block)
+        self.codegen_code_block(ctx, instrs, &match_expr.else_branch)
+        self.exit_scope(ctx)
+        instrs.push!(WasmInstr::BlockEnd)
+
         return
     }
 
@@ -1134,6 +1153,33 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::DoWith(do_with) = expr {
+        let arg_type = self.get_expr_type(ctx, do_with.args.items.get!(0))
+        let arg_local = self.get_local_info(ctx, do_with.bind_id, do_with.with_loc)
+
+        for arg in do_with.args.items.iter!() {
+            self.enter_scope(ctx, ScopeKind::InlineFn)
+
+            self.codegen(ctx, instrs, arg)
+
+            self.codegen_local_set(instrs, arg_type, arg_local.local_index)
+            self.codegen(ctx, instrs, do_with.body)
+
+            self.exit_scope(ctx)
+        }
+
+        return
+    }
+
+    if match CodeExpr::Pipe(pipe) = expr {
+        self.codegen(ctx, instrs, pipe.lhs)
+
+        let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc)
+        self.codegen_local_set(instrs, self.get_type(lhs_var.var_type_id), lhs_var.local_index)
+        self.codegen(ctx, instrs, pipe.rhs)
+        return
+    }
+
     if match CodeExpr::Defer(defer_expr) = expr {
         // find first non-inline-fn scope
         let scope_stack = self.module_info.at!(ctx.module_id).scope_stack
@@ -1174,60 +1220,6 @@ fn Codegen::codegen(
             prop_error.err_bind_id,
             null,
         )
-        return
-    }
-
-    if match CodeExpr::Match(match_expr) = expr {
-        let enum_variant_tag_value = self.codegen_match_header(ctx, instrs, &match_expr.header)
-
-        // pop enum's variant from the stack and compare it to the expected variant
-        // if it's not equal then `else_branch`` must run
-        instrs.push!(WasmInstr::I32Const(
-            self.wasm_module.arena.new!(WasmInstrI32Const { value: enum_variant_tag_value }),
-        ))
-        instrs.push!(WasmInstr::BinaryOp(
-            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_NE }),
-        ))
-
-        instrs.push!(WasmInstr::BlockStart(
-            self.wasm_module.arena.new!(WasmInstrBlockStart {
-                block_kind: WasmBlockKind::If,
-                block_type: WasmBlockType::NoOut,
-            }),
-        ))
-
-        self.enter_scope(ctx, ScopeKind::Block)
-        self.codegen_code_block(ctx, instrs, &match_expr.else_branch)
-        self.exit_scope(ctx)
-        instrs.push!(WasmInstr::BlockEnd)
-
-        return
-    }
-
-    if match CodeExpr::DoWith(do_with) = expr {
-        let arg_type = self.get_expr_type(ctx, do_with.args.items.get!(0))
-        let arg_local = self.get_local_info(ctx, do_with.bind_id, do_with.with_loc)
-
-        for arg in do_with.args.items.iter!() {
-            self.enter_scope(ctx, ScopeKind::InlineFn)
-
-            self.codegen(ctx, instrs, arg)
-
-            self.codegen_local_set(instrs, arg_type, arg_local.local_index)
-            self.codegen(ctx, instrs, do_with.body)
-
-            self.exit_scope(ctx)
-        }
-
-        return
-    }
-
-    if match CodeExpr::Pipe(pipe) = expr {
-        self.codegen(ctx, instrs, pipe.lhs)
-
-        let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc)
-        self.codegen_local_set(instrs, self.get_type(lhs_var.var_type_id), lhs_var.local_index)
-        self.codegen(ctx, instrs, pipe.rhs)
         return
     }
 
