@@ -209,7 +209,6 @@ type Registry = struct {
     expr_id_count: u32,
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
 
-    type_lookup: &?void, // TODO: implement BTreeMap<Type, TypeId>
     types: &Vec(Type), //                      indexed by `ExprInfo` for most of the expressions
     call_info: &Vec(CallInfo), //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
     inline_call_info: &Vec(InlineCallInfo), // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
@@ -248,7 +247,6 @@ fn Registry::new(): &Registry {
         module_import_order: Vec::new!<ModuleId>(),
         expr_id_count: 0,
         expr_info: Vec::new!<ExprInfo>(),
-        type_lookup: null,
         types: Vec::new!<Type>(),
         call_info: Vec::new!<CallInfo>(),
         inline_call_info: Vec::new!<InlineCallInfo>(),
@@ -525,7 +523,7 @@ fn Registry::get_type(&self, type_id: TypeId): Type {
     return self.types.get!(type_id)
 }
 
-// TODO: use a better data structure
+// TODO(perf)?: use a better data structure
 fn Registry::intern_type(&self, type_: Type): TypeId {
     for type_id in 0..self.types.len {
         let interned_type = self.types.get!(type_id)

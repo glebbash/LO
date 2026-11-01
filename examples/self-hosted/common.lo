@@ -234,7 +234,7 @@ inline fn Reporter::loc_to_tmp_str!(loc: Loc): str {
     out.as_str()
 }
 
-// TODO: check if this leaks memory
+// TODO(memory)?: check if this leaks memory
 fn Reporter::json_str_escape(value: String): String {
     return value \
         .replace("\\", "\\\\") \

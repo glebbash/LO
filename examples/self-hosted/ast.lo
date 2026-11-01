@@ -1,7 +1,7 @@
 @include("./common.lo")
 @include("./lexer.lo")
 
-// TODO: impl proper cleanup for all &Vec fields here
+// TODO(memory): impl proper cleanup for all &Vec fields here
 
 type ExprId = u32
 

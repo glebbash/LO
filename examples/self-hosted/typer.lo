@@ -26,7 +26,6 @@ type Type = enum (&void) {
     Container(&ContainerType),
 }
 
-// TODO: complete and maybe find a better way to do this
 fn Type::equals(self, other): bool {
     if match Type::Never(_) = self {
         if match Type::Never(_) = other {
@@ -223,16 +222,12 @@ type TyContext = struct {
     fn_index: &?u32,
     expr_id_offset: u32,
     symbols: &Vec(TySymbol),
-    symbols_lookup: &Map(&str, u32),
 
     inline_fn_call_loc: &?Loc,
     is_expr_referenced: bool,
 }
 
 fn TyContext::add_symbol(&self, symbol: TySymbol) {
-    // TODO: port:
-    // self.symbols_lookup.insert(symbol.name, self.symbols.len)
-
     self.symbols.push!(symbol)
 }
 
@@ -290,7 +285,6 @@ fn Typer::type_all(&self) {
         fn_index: null,
         expr_id_offset: 0,
         symbols: Vec::new!<TySymbol>(),
-        symbols_lookup: Map::new!<&str, u32>(),
 
         inline_fn_call_loc: null,
         is_expr_referenced: false,
@@ -3574,7 +3568,7 @@ fn Typer::type_inline_fn_call(
 
     let self_type = self.get_fn_self_type(parent_ctx, inline_fn_def.decl.fn_name, inline_fn_def.decl.params)?
 
-    // TODO!: figure out why this is needed
+    // TODO(logic)!: figure out why this is needed
     inline_ctx.expr_id_offset = 0
 
     let inline_fn_param_types = Vec::new!<TypeId>()
@@ -4200,8 +4194,8 @@ fn Typer::define_symbol(
     return true
 }
 
+// TODO(perf)?: use a map for symbol_table
 fn Typer::get_symbol(&self, ctx: &TyContext, symbol_name: str): &?TySymbol {
-    // TODO: change to `ctx.symbols_lookup.get(symbol_name)`
     for &symbol in ctx.symbols.iter!() {
         if symbol.name.equals(symbol_name) {
             return symbol
@@ -4228,7 +4222,6 @@ fn Typer::child_ctx(
         fn_index: parent.fn_index,
         expr_id_offset: parent.expr_id_offset,
         symbols: Vec::new!<TySymbol>(),
-        symbols_lookup: Map::new!<&str, u32>(),
 
         inline_fn_call_loc: parent.inline_fn_call_loc,
         is_expr_referenced: parent.is_expr_referenced,
@@ -5046,10 +5039,4 @@ fn StableVec::len(self): u32 {
 
     return (chunks_len - 1) * self.chunk_size \
         + self.chunks.get!(chunks_len - 1).len
-}
-
-type Map = struct {} // TODO: implement
-
-inline fn Map::new!<K,V>(): &Map(K, V) {
-    0 as &Map(K, V) // TODO: implement
 }

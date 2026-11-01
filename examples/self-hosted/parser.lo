@@ -2,7 +2,7 @@
 @include("./lexer.lo")
 @include("./ast.lo")
 
-// TODO?: support `@use(TokenKind::_)`
+// TODO(design)?: support `@use(TokenKind::_)`
 inline let StringLiteral = TokenKind::StringLiteral
 inline let CharLiteral = TokenKind::CharLiteral
 inline let IntLiteral = TokenKind::IntLiteral
@@ -1270,7 +1270,7 @@ fn Parser::parse_code_expr_postfix(
 }
 
 fn Parser::parse_int_literal(&self, int: &Token): Result(&IntLiteralExpr, &Error) {
-    // TODO: figure out why rename doesn't work here, rename to `int` once fixed
+    // TODO(lsp): figure out why rename doesn't work here, rename to `int` once fixed
     let int_literal = int
 
     let tag = null as &str
@@ -1280,7 +1280,7 @@ fn Parser::parse_int_literal(&self, int: &Token): Result(&IntLiteralExpr, &Error
         let _ = self.next()
     }
 
-    // TODO: figure out why inspection on `int_literal` is emitted twice here breaking rename
+    // TODO(lsp): figure out why inspection on `int_literal` is emitted twice here breaking rename
     let repr = int_literal.get_value(self.source)
     let value = Lexer::parse_int_literal_value(repr)
 
