@@ -23,6 +23,30 @@ type WasmFnType = struct {
     outputs: &Vec(WasmType),
 }
 
+fn WasmFnType::equals(self, other: WasmFnType): bool {
+    if self.inputs.len != other.inputs.len {
+        return false
+    }
+
+    if self.outputs.len != other.outputs.len {
+        return false
+    }
+
+    for i in 0..self.inputs.len {
+        if self.inputs.get!(i) != other.inputs.get!(i) {
+            return false
+        }
+    }
+
+    for i in 0..self.outputs.len {
+        if self.outputs.get!(i) != other.outputs.get!(i) {
+            return false
+        }
+    }
+
+    return true
+}
+
 type WasmType = enum {
     I32 = 0x7F,
     I64 = 0x7E,

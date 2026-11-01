@@ -473,6 +473,16 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &call_info.return_type_id
     }
 
+    if match CodeExpr::InlineFnCall(_) = expr {
+        let call_info = self.inline_call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
+    if match CodeExpr::InlineFnMethodCall(_) = expr {
+        let call_info = self.inline_call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
     if match CodeExpr::InfixOp(_) = expr {
         let binary_op_info = self.binary_op_info.at!(*expr_info)
         return &binary_op_info.result_type_id

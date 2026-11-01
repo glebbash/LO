@@ -139,10 +139,9 @@ fn Codegen::codegen_all(&self) {
         for existing_type_index in 0..self.wasm_fn_types.len {
             let existing_fn_type = self.wasm_fn_types.get!(existing_type_index)
 
-            // TODO: port
-            // if wasm_fn_type == existing_fn_type {
-            //     fn_type_index = existing_type_index
-            // }
+            if wasm_fn_type.equals(existing_fn_type) {
+                fn_type_index = existing_type_index
+            }
         }
         if fn_type_index == self.wasm_fn_types.len {
             self.wasm_fn_types.push!(wasm_fn_type)
@@ -277,6 +276,23 @@ fn Codegen::codegen_all(&self) {
 
             self.wasm_module.local_names.push!(local_names_item)
         }
+    }
+
+    // patch @data_size values in globals
+    let data_size_instr = WasmInstr::I32Const(
+        self.wasm_module.arena.new!(WasmInstrI32Const { value: self.registry.data_size as i32 }),
+    )
+    for &global in self.registry.globals.iter!() {
+        match CodeExpr::IntrinsicCall(intrinsic) = global.value else {
+            continue
+        }
+
+        if !intrinsic.fn_name.repr.equals("data_size") {
+            continue
+        }
+
+        self.wasm_module.globals.at!(global.wasm_global_index) \
+            .initial_value.instrs.set!(0, data_size_instr)
     }
 
     // TODO: port
@@ -529,6 +545,17 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::Sizeof(sizeof_expr) = expr {
+        let type_ = self.get_type_expr_value(ctx, sizeof_expr.type_expr)
+        let type_layout = ref!(TypeLayout::new())
+        Typer::get_type_layout(self.registry, type_, type_layout)
+
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: type_layout.byte_size as i32 }),
+        ))
+        return
+    }
+
     if match CodeExpr::PrefixOp(prefix_op) = expr {
         if prefix_op.op_tag == PrefixOpTag::Dereference {
             let var = self.var_from_expr(ctx, expr).unwrap!()
@@ -595,11 +622,24 @@ fn Codegen::codegen(
         todo!()
     }
 
+    if match CodeExpr::InlineFnCall(call) = expr {
+        self.codegen_inline_fn_call(ctx, instrs, call.id, call.fn_name.loc)
+        return
+    }
+
     if match CodeExpr::IntrinsicCall(call) = expr {
         // TODO: port
 
         if call.fn_name.repr.equals("unreachable") {
             instrs.push!(WasmInstr::Unreachable)
+            return
+        }
+
+        if call.fn_name.repr.equals("data_size") {
+            // placeholder, will be patched later
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 }),
+            ))
             return
         }
 
@@ -913,8 +953,27 @@ fn Codegen::codegen_fn_call(
     ))
 }
 
-fn Codegen::codegen_inline_fn_call(&self) {
-    todo!()
+fn Codegen::codegen_inline_fn_call(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    call_expr_id: ExprId,
+    loc: Loc,
+) {
+    let call_info_id = self.get_expr_info(ctx, call_expr_id, loc)
+    let call_info = self.registry.inline_call_info.at!(call_info_id)
+    let inline_fn_def = self.registry.inline_fns.get!(call_info.inline_fn_index)
+    match FnExprValue::Body(body) = inline_fn_def.value else {
+        @unreachable()
+    }
+
+    self.enter_scope(ctx, ScopeKind::InlineFn)
+
+    self.current_scope(ctx).expr_id_offset = call_info.inner_expr_id_offset
+
+    self.codegen_code_block(ctx, instrs, body)
+
+    self.exit_scope(ctx)
 }
 
 fn Codegen::codegen_catch(&self) {
@@ -1370,6 +1429,16 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    if match Type::U8(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    if match Type::U16(_) = type_ {
+        wasm_types.push!(WasmType::I32)
+        return
+    }
+
     if match Type::U32(_) = type_ {
         wasm_types.push!(WasmType::I32)
         return
@@ -1382,6 +1451,11 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
 
     if match Type::Pointer(_) = type_ {
         wasm_types.push!(WasmType::I32)
+        return
+    }
+
+    if match Type::U64(_) = type_ {
+        wasm_types.push!(WasmType::I64)
         return
     }
 
@@ -1441,6 +1515,13 @@ fn Codegen::push_wasm_dbg_name_section_locals(
     local_type: Type,
     local_name: str,
 ): u32 {
+    if match Type::Never(_) = local_type {
+        return local_index // skip
+    }
+    if match Type::Void(_) = local_type {
+        return local_index // skip
+    }
+
     // TODO: port
 
     if match Type::U32(_) = local_type {
