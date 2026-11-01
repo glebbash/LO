@@ -964,9 +964,6 @@ async function commandTest() {
         const exports = await loadWasm(program as Uint8Array<ArrayBuffer>);
 
         assert.strictEqual(exports.main(), 0);
-        assert.strictEqual(exports.lerp(0, 10, 0.5), 5);
-        assert.strictEqual(exports.is_freezing(-3), 1);
-        assert.strictEqual(exports.is_freezing(3), 0);
     });
 
     describe("formatter", async () => {

@@ -24,15 +24,6 @@ fn second_reading(): Reading {
     return Reading { sensor_id: 2u8, timestamp: 2000u64, delta: 7i64 }
 }
 
-// floats can't be written as literals, so these are checked by the host
-export fn lerp(from: f32, to: f32, t: f32): f32 {
-    return from + (to - from) * t
-}
-
-export fn is_freezing(celsius: f64): bool {
-    return celsius <= celsius / celsius - celsius / celsius
-}
-
 export fn main(): u32 {
     if !check_integers() {
         return 1

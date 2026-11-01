@@ -107,7 +107,6 @@ type WasmExpr = struct {
     instrs: &Vec(WasmInstr),
 }
 
-// TODO: port other variants
 type WasmInstr = enum (&void) {
     Unreachable,
     MemorySize,
@@ -665,8 +664,6 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
-    // TODO: port
-
     if match WasmInstr::Return(_) = instr {
         WasmModule::write_u8(out, 0x0Fu8)
         return
@@ -797,7 +794,6 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
-    // TODO: port
     todo!()
 }
 

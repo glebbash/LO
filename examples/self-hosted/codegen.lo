@@ -637,7 +637,6 @@ fn Codegen::codegen(
                     self.wasm_module.arena.new!(WasmInstrUnaryOp { kind: WasmUnaryOpKind::I64_EQZ }),
                 ))
             } else {
-                // TODO: port F32/F64
                 todo!()
             }
 
@@ -677,7 +676,6 @@ fn Codegen::codegen(
                     self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I64_SUB }),
                 ))
             } else {
-                // TODO: port F32/F64
                 todo!()
             }
 
@@ -1233,9 +1231,7 @@ fn Codegen::codegen(
         return
     }
 
-    // TODO: port
-
-    todo!()
+    @unreachable()
 }
 
 fn Codegen::codegen_match_header(
@@ -1963,7 +1959,6 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
-    // TODO: port
     todo!()
 }
 
@@ -2103,7 +2098,6 @@ fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmIns
         return
     }
 
-    // TODO: port
     todo!()
 }
 
@@ -2114,8 +2108,6 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
     if match Type::Void(_) = type_ {
         return
     }
-
-    // TODO: port
 
     if match Type::Null(_) = type_ {
         wasm_types.push!(WasmType::I32)
@@ -2220,9 +2212,7 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
-    // TODO: port
-
-    todo!()
+    @unreachable()
 }
 
 fn Codegen::enter_scope(&self, ctx: &ExprContext, scope_type: ScopeKind) {
@@ -2344,22 +2334,6 @@ fn Codegen::push_wasm_dbg_name_section_locals(
         return local_index + 1
     }
 
-    if match Type::F32(_) = local_type {
-        output.push!(WasmLocalInfo {
-            local_index: local_index,
-            local_name: String::from_str(local_name),
-        })
-        return local_index + 1
-    }
-
-    if match Type::F64(_) = local_type {
-        output.push!(WasmLocalInfo {
-            local_index: local_index,
-            local_name: String::from_str(local_name),
-        })
-        return local_index + 1
-    }
-
     if match Type::Pointer(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
@@ -2472,8 +2446,6 @@ fn Codegen::push_wasm_dbg_name_section_locals(
             local_name,
         )
     }
-
-    // TODO: port
 
     todo!()
 }

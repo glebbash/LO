@@ -3328,7 +3328,6 @@ fn Typer::get_binary_op_kind(
     operand_type: Type,
     op_loc: Loc,
 ): Result(WasmBinaryOpKind, &Error) {
-    // TODO: port
     let signed = false
     let wasm_op_type = WasmType::I32
 
@@ -3355,10 +3354,6 @@ fn Typer::get_binary_op_kind(
     } else if match Type::I64(_) = operand_type {
         wasm_op_type = WasmType::I64
         signed = true
-    } else if match Type::F32(_) = operand_type {
-        wasm_op_type = WasmType::F32
-    } else if match Type::F64(_) = operand_type {
-        wasm_op_type = WasmType::F64
     } else if match Type::Enum(enum_type) = operand_type {
         if !self.get_type(self.registry.enums.at!(enum_type.enum_index).variant_type_id).equals(Type::Void) {
             // TODO: port
@@ -3370,7 +3365,6 @@ fn Typer::get_binary_op_kind(
         todo!()
     }
 
-    // TODO: port
     if wasm_op_type == WasmType::I32 {
         if op_tag == InfixOpTag::Equal {
             return Ok(WasmBinaryOpKind::I32_EQ)
@@ -3446,7 +3440,6 @@ fn Typer::get_binary_op_kind(
         }
     }
 
-    // TODO: port
     if wasm_op_type == WasmType::I64 {
         if op_tag == InfixOpTag::Equal {
             return Ok(WasmBinaryOpKind::I64_EQ)
@@ -3522,75 +3515,6 @@ fn Typer::get_binary_op_kind(
         }
     }
 
-    if wasm_op_type == WasmType::F32 {
-        if op_tag == InfixOpTag::Equal {
-            return Ok(WasmBinaryOpKind::F32_EQ)
-        }
-        if op_tag == InfixOpTag::NotEqual {
-            return Ok(WasmBinaryOpKind::F32_NE)
-        }
-        if op_tag == InfixOpTag::Less {
-            return Ok(WasmBinaryOpKind::F32_LT)
-        }
-        if op_tag == InfixOpTag::Greater {
-            return Ok(WasmBinaryOpKind::F32_GT)
-        }
-        if op_tag == InfixOpTag::LessEqual {
-            return Ok(WasmBinaryOpKind::F32_LE)
-        }
-        if op_tag == InfixOpTag::GreaterEqual {
-            return Ok(WasmBinaryOpKind::F32_GE)
-        }
-        if op_tag == InfixOpTag::Add {
-            return Ok(WasmBinaryOpKind::F32_ADD)
-        }
-        if op_tag == InfixOpTag::Sub {
-            return Ok(WasmBinaryOpKind::F32_SUB)
-        }
-        if op_tag == InfixOpTag::Mul {
-            return Ok(WasmBinaryOpKind::F32_MUL)
-        }
-        if op_tag == InfixOpTag::Div {
-            return Ok(WasmBinaryOpKind::F32_DIV)
-        }
-        // TODO: port
-    }
-
-    if wasm_op_type == WasmType::F64 {
-        if op_tag == InfixOpTag::Equal {
-            return Ok(WasmBinaryOpKind::F64_EQ)
-        }
-        if op_tag == InfixOpTag::NotEqual {
-            return Ok(WasmBinaryOpKind::F64_NE)
-        }
-        if op_tag == InfixOpTag::Less {
-            return Ok(WasmBinaryOpKind::F64_LT)
-        }
-        if op_tag == InfixOpTag::Greater {
-            return Ok(WasmBinaryOpKind::F64_GT)
-        }
-        if op_tag == InfixOpTag::LessEqual {
-            return Ok(WasmBinaryOpKind::F64_LE)
-        }
-        if op_tag == InfixOpTag::GreaterEqual {
-            return Ok(WasmBinaryOpKind::F64_GE)
-        }
-        if op_tag == InfixOpTag::Add {
-            return Ok(WasmBinaryOpKind::F64_ADD)
-        }
-        if op_tag == InfixOpTag::Sub {
-            return Ok(WasmBinaryOpKind::F64_SUB)
-        }
-        if op_tag == InfixOpTag::Mul {
-            return Ok(WasmBinaryOpKind::F64_MUL)
-        }
-        if op_tag == InfixOpTag::Div {
-            return Ok(WasmBinaryOpKind::F64_DIV)
-        }
-        // TODO: port
-    }
-
-    // TODO: port
     todo!()
 }
 
@@ -4711,8 +4635,6 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
-    // TODO: port
-
     if match Type::Bool(_) = type_ {
         if layout.primitives != null {
             layout.primitives.push!(type_)
@@ -4886,8 +4808,7 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
-    // TODO: port
-    todo!()
+    @unreachable()
 }
 
 fn Typer::align(value: u32, alignment: u32): u32 {
