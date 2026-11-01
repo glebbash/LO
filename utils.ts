@@ -1043,7 +1043,7 @@ async function commandTest() {
                 "examples/lib/wasi.lo",
                 "examples/test/string-pooling.lo",
                 "examples/test/zst-noop.lo",
-                // "examples/lib/std.lo",
+                "examples/lib/std.lo",
                 // "examples/test/vec.test.lo",
                 // "examples/test/demos/hello-world.lo",
                 // "examples/test/demos/echo.lo",

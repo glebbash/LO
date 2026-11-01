@@ -690,7 +690,48 @@ fn Typer::get_struct_field_info(
         }
     }
 
-    // TODO: port Container/Seg/Result/Enum special cases
+    if match Type::Container(ctr) = lhs_type {
+        lhs_type = registry.get_type(ctr.container)
+    }
+
+    if match Type::Seg(seg) = lhs_type {
+        if field_access.field_name.repr.equals("ptr") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::Pointer(heap::new!(PointerType {
+                    pointee: seg.item,
+                    is_sequence: true,
+                    is_nullable: false,
+                }))),
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        if field_access.field_name.repr.equals("len") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::U32),
+                field_index: 1,
+                byte_offset: 4,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    // TODO: port Result/Enum special cases
 
     match Type::Struct(struct_type) = lhs_type else {
         let message = String::from_str_in(registry.error_arena, "Cannot get field '")
@@ -1060,8 +1101,6 @@ fn Typer::get_fn_param_type(
     self_type_id: &?TypeId,
     infer_allowed: bool,
 ): Result(TypeId, &Error) {
-    // TODO: port infer params
-
     if match FnParamType::Self(_) = fn_param.param_type {
         return Ok(*self_type_id)
     }
@@ -1075,6 +1114,21 @@ fn Typer::get_fn_param_type(
     }
 
     if match FnParamType::Type(param_type) = fn_param.param_type {
+        let infer_type_name = Typer::get_infer_type_name(fn_param)?
+        if infer_type_name != null {
+            if !infer_allowed {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Infer is only allowed in inline fns",
+                    ),
+                    loc: fn_param.param_name.loc,
+                }))
+            }
+
+            return self.get_type_id_or_err(ctx, *infer_type_name, fn_param.param_name.loc)
+        }
+
         return self.build_type(ctx, param_type.expr)
     }
 
@@ -1338,8 +1392,28 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     // TODO: port
 
     if match CodeExpr::IntLiteral(int_literal) = expr {
-        // TODO: port the full version
-        self.store_type(ctx, int_literal.id, Type::U32)
+        if int_literal.tag == null {
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+
+        let tag_type_id_result = self.get_type_id_or_err(ctx, *int_literal.tag, int_literal.loc)
+        if tag_type_id_result.err as u32 != 0 {
+            self.report_error(tag_type_id_result.err)
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+        let tag_type_id = tag_type_id_result.ok
+
+        let tag_type = self.get_type(tag_type_id)
+        let wide_result = Typer::is_wide_int_tag(self.registry, tag_type, int_literal.loc)
+        if wide_result.err as u32 != 0 {
+            self.report_error(wide_result.err)
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+
+        self.store_expr_info(ctx, int_literal.id, tag_type_id)
 
         return Ok()
     }
@@ -1358,6 +1432,11 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
     if match CodeExpr::BoolLiteral(bool_literal) = expr {
         self.store_type(ctx, bool_literal.id, Type::Bool)
+        return Ok()
+    }
+
+    if match CodeExpr::CharLiteral(char_literal) = expr {
+        self.store_type(ctx, char_literal.id, Type::U8)
         return Ok()
     }
 
@@ -1525,6 +1604,61 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::ResultLiteral(result_literal) = expr {
+        let value_type = Type::Void
+
+        if result_literal.value != null {
+            let value_result = self.type_code_expr_and_load(ctx, *result_literal.value)
+            if value_result.err as u32 != 0 {
+                self.report_error(value_result.err)
+            } else {
+                value_type = self.get_type(value_result.ok)
+            }
+        }
+
+        let result = self.get_result_literal_type(ctx, result_literal.result_type, result_literal.loc)?
+        let ok = self.get_type(result.ok)
+        let err = self.get_type(result.err)
+
+        if result_literal.is_ok && !self.is_type_compatible(ok, value_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create result, Ok type mismatch. Got ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(value_type),
+                ", expected: ",
+                self.registry.fmt(ok),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: result_literal.loc,
+            }))
+        }
+
+        if !result_literal.is_ok && !self.is_type_compatible(err, value_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create result, Err type mismatch. Got ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(value_type),
+                ", expected: ",
+                self.registry.fmt(err),
+            )
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: result_literal.loc,
+            }))
+        }
+
+        self.store_type(ctx, result_literal.id, Type::Result(heap::new!(result)))
+
+        return Ok()
+    }
+
     if match CodeExpr::Let(let_expr) = expr {
         self.type_code_expr(ctx, let_expr.value) catch err {
             self.report_error(err)
@@ -1598,7 +1732,138 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             return Ok()
         }
 
+        if call.fn_name.repr.equals("memory_size") {
+            self.store_type(ctx, call.id, Type::I32)
+
+            if call.args.items.len != 0 || call.type_args.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): i32`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("memory_grow") {
+            self.store_type(ctx, call.id, Type::I32)
+
+            for arg in call.args.items.iter!() {
+                self.report_if_err!(self.type_code_expr(ctx, arg))
+            }
+
+            let bad_args = call.type_args.len != 0 || call.args.items.len != 1
+
+            if call.args.items.len > 0 {
+                let type_id = self.load_type(ctx, call.args.items.get!(0))
+                if type_id != null {
+                    if !self.get_type(*type_id).equals(Type::U32) {
+                        bad_args = true
+                    }
+                }
+            }
+
+            if bad_args {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(num_pages: u32): i32`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("memory_copy") {
+            self.store_type(ctx, call.id, Type::Void)
+
+            let bad_args = call.type_args.len != 0
+
+            let all_good = true
+            let arg_types = Vec::new!<Type>()
+            for arg in call.args.items.iter!() {
+                let arg_type_id_result = self.type_code_expr_and_load(ctx, arg)
+                if arg_type_id_result.err as u32 != 0 {
+                    self.report_error(arg_type_id_result.err)
+                    all_good = false
+                    continue
+                }
+
+                arg_types.push!(self.get_type(arg_type_id_result.ok))
+            }
+
+            if all_good {
+                if arg_types.len != 3 {
+                    bad_args = true
+                } else {
+                    for i in 0..3 {
+                        if !arg_types.get!(i).equals(Type::U32) {
+                            bad_args = true
+                        }
+                    }
+                }
+            }
+
+            if bad_args {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(dest: u32, source: u32: num_bytes: u32)`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("seg") {
+            if call.args.items.len == 2 {
+                let ptr_type_id = self.type_code_expr_and_load(ctx, call.args.items.get!(0))?
+                let len_type_id = self.type_code_expr_and_load(ctx, call.args.items.get!(1))?
+
+                if match Type::Pointer(ptr) = self.get_type(ptr_type_id) {
+                    if ptr.is_sequence && !ptr.is_nullable {
+                        if match Type::U32(_) = self.get_type(len_type_id) {
+                            self.store_type(ctx, call.id, Type::Seg(heap::new!(SegType { item: ptr.pointee })))
+                            return Ok()
+                        }
+                    }
+                }
+            }
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid arguments for `@seg(ptr: &[]T, len: u32): seg(T)`",
+                ),
+                loc: call.fn_name.loc,
+            }))
+        }
+
         // TODO: port
+
+        let message = String::from_str_in(self.registry.error_arena, "Unknown intrinsic: ")
+        message.push_str(call.fn_name.repr)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: call.fn_name.loc,
+        }))
     }
 
     if match CodeExpr::InfixOp(infix_op) = expr {
@@ -1698,6 +1963,22 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             call.args.items,
             call.id,
             call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::InlineFnMethodCall(call) = expr {
+        let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, call.lhs)?)
+        let inline_fn_name = self.get_fn_name_from_method(lhs_type, call.field_name.repr)
+
+        self.type_inline_fn_call(
+            ctx,
+            inline_fn_name,
+            call.type_args,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
         )?
         return Ok()
     }
@@ -1979,6 +2260,12 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Defer(defer_expr) = expr {
+        self.type_code_expr(ctx, defer_expr.expr)?
+        self.store_type(ctx, defer_expr.id, Type::Void)
+        return Ok()
+    }
+
     if match CodeExpr::Assign(assign) = expr {
         let lhs_result = self.type_code_expr_and_load(ctx, assign.lhs)
         if lhs_result.err as u32 != 0 {
@@ -2024,6 +2311,24 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         let expr_type_id = self.type_code_expr_and_load(ctx, prefix_op.expr)?
 
         ctx.is_expr_referenced = is_ref_prev
+
+        if prefix_op.op_tag == PrefixOpTag::Not {
+            if Typer::count_primitive_components(self.registry, self.get_type(expr_type_id)) != 1 {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot apply not operation to expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Bool)
+            return Ok()
+        }
 
         if prefix_op.op_tag == PrefixOpTag::Dereference {
             match Type::Pointer(ptr) = self.get_type(expr_type_id) else {
@@ -2161,6 +2466,37 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Catch(catch_expr) = expr {
+        let expr_type_id = self.type_code_expr_and_load(ctx, catch_expr.lhs)?
+        let result = self.assert_catchable_type(self.get_type(expr_type_id), catch_expr.catch_loc)?
+
+        let ctx = self.child_ctx(ctx, ScopeKind::Block)
+
+        self.define_local_no_symbol(ctx, null, result.ok, catch_expr.ok_bind_id)
+        let _ = self.define_local(
+            ctx,
+            &catch_expr.error_bind.repr,
+            result.err,
+            catch_expr.error_bind.loc,
+            catch_expr.error_bind.id,
+            true,
+        )
+
+        let catch_type = self.type_code_block(ctx, &catch_expr.catch_body, true)
+        if !catch_type.equals(Type::Never) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Catch expression must resolve to never, got other type",
+                ),
+                loc: catch_expr.catch_loc,
+            }))
+        }
+
+        self.store_expr_info(ctx, catch_expr.id, result.ok)
+        return Ok()
+    }
+
     if match CodeExpr::Paren(paren) = expr {
         self.type_code_expr(ctx, paren.expr)?
 
@@ -2226,6 +2562,8 @@ fn Typer::get_binary_op_kind(
         signed = true
     } else if match Type::I32(_) = operand_type {
         signed = true
+    } else if match Type::U64(_) = operand_type {
+        wasm_op_type = WasmType::I64
     } else {
         // TODO: port
         todo!()
@@ -2245,6 +2583,24 @@ fn Typer::get_binary_op_kind(
             }
             return Ok(WasmBinaryOpKind::I32_LT_U)
         }
+        if op_tag == InfixOpTag::Greater {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_GT_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_GT_U)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_LE_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_LE_U)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_GE_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_GE_U)
+        }
         if op_tag == InfixOpTag::Add {
             return Ok(WasmBinaryOpKind::I32_ADD)
         }
@@ -2253,6 +2609,12 @@ fn Typer::get_binary_op_kind(
         }
         if op_tag == InfixOpTag::Mul {
             return Ok(WasmBinaryOpKind::I32_MUL)
+        }
+        if op_tag == InfixOpTag::Div {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_DIV_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_DIV_U)
         }
         if op_tag == InfixOpTag::Mod {
             if signed {
@@ -2271,6 +2633,28 @@ fn Typer::get_binary_op_kind(
                 return Ok(WasmBinaryOpKind::I32_SHR_S)
             }
             return Ok(WasmBinaryOpKind::I32_SHR_U)
+        }
+    }
+
+    // TODO: port
+    if wasm_op_type == WasmType::I64 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::I64_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::I64_NE)
+        }
+        if op_tag == InfixOpTag::Div {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_DIV_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_DIV_U)
+        }
+        if op_tag == InfixOpTag::Mod {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_REM_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_REM_U)
         }
     }
 
@@ -2432,20 +2816,28 @@ fn Typer::type_inline_fn_call(
             self.define_type(inline_ctx, *infer_type_name, self.get_type(type_id), inline_fn_param.loc)
         }
 
-        let arg_expr = arg_exprs.get!(i)
-        if has_receiver {
-            // TODO: port
-            todo!()
-        }
-
         let param_name = inline_fn_param.param_name.repr
         let param_loc = inline_fn_param.param_name.loc
         let _ = self.define_symbol(inline_ctx, param_name, TySymbolKind::Const, param_loc)
-        self.registry.constants.push!(ConstDef {
-            type_id: type_id,
-            expr: arg_expr,
-            inner_expr_id_offset: parent_ctx.expr_id_offset,
-        })
+
+        if has_receiver && i == 0 {
+            self.registry.constants.push!(ConstDef {
+                type_id: type_id,
+                expr: *receiver_arg,
+                inner_expr_id_offset: parent_ctx.expr_id_offset,
+            })
+        } else {
+            let arg_index = i
+            if has_receiver {
+                arg_index = i - 1
+            }
+
+            self.registry.constants.push!(ConstDef {
+                type_id: type_id,
+                expr: arg_exprs.get!(arg_index),
+                inner_expr_id_offset: parent_ctx.expr_id_offset,
+            })
+        }
     }
 
     let self_type = self.get_fn_self_type(parent_ctx, inline_fn_def.decl.fn_name, inline_fn_def.decl.params)?
@@ -2519,10 +2911,18 @@ fn Typer::get_infer_type_name(fn_param: &FnParam): Result(&?str, &Error) {
 fn Typer::get_fn_name_from_method(&self, receiver_type: Type, method_name: str): str {
     let deref_receiver_type = self.deref_rec(receiver_type)
 
-    // TODO: port Seg/Result/Container special cases
-
     let name = String::new_in(self.registry.error_arena, 16)
-    name.push_str(self.registry.fmt(deref_receiver_type))
+
+    if match Type::Seg(_) = deref_receiver_type {
+        name.push_str("seg")
+    } else if match Type::Result(_) = deref_receiver_type {
+        name.push_str("Result")
+    } else if match Type::Container(ctr) = deref_receiver_type {
+        name.push_str(self.registry.fmt(self.get_type(ctr.container)))
+    } else {
+        name.push_str(self.registry.fmt(deref_receiver_type))
+    }
+
     name.push_str("::")
     name.push_str(method_name)
 
@@ -2535,6 +2935,42 @@ fn Typer::deref_rec(&self, type_: Type): Type {
     }
 
     return type_
+}
+
+fn Typer::get_result_literal_type(
+    &self,
+    ctx: &TyContext,
+    explicit_type: &?ResultTypeExpr,
+    loc: Loc,
+): Result(ResultType, &Error) {
+    if explicit_type != null {
+        let ok = self.build_type(ctx, explicit_type.ok)?
+        let err = self.build_type(ctx, explicit_type.err)?
+        return Ok(ResultType { ok: ok, err: err })
+    }
+
+    if ctx.fn_index == null {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create implicitly typed result in const context",
+            ),
+            loc: loc,
+        }))
+    }
+
+    let fn_info = self.registry.functions.at!(*ctx.fn_index)
+    match Type::Result(result) = self.get_type(fn_info.type_.output) else {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create implicitly typed result: function does not return result",
+            ),
+            loc: loc,
+        }))
+    }
+
+    return Ok(ResultType { ok: result.ok, err: result.err })
 }
 
 fn Typer::get_value_info(
@@ -2769,6 +3205,18 @@ fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &
 
     if match TypeExpr::Container(ctr) = expr {
         if match TypeExpr::Named(ident) = ctr.container {
+            if ident.repr.equals("Result") {
+                if ctr.items.len != 2 {
+                    todo!()
+                }
+
+                let ok = self.build_type(ctx, ctr.items.get!(0))?
+                let err = self.build_type(ctx, ctr.items.get!(1))?
+
+                self.store_type(ctx, ctr.id, Type::Result(heap::new!(ResultType { ok: ok, err: err })))
+                return Ok()
+            }
+
             if ident.repr.equals("seg") {
                 if ctr.items.len != 1 {
                     todo!()
@@ -2779,10 +3227,60 @@ fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &
                 self.store_type(ctx, ctr.id, Type::Seg(heap::new!(SegType { item: item })))
                 return Ok()
             }
+
+            if ident.repr.equals("typeof") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                match TypeExpr::Named(item_ident) = ctr.items.get!(0) else {
+                    todo!()
+                }
+
+                let value_info = self.get_value_info(ctx, *item_ident)?
+                self.store_expr_info(ctx, ctr.id, value_info.type_id)
+                return Ok()
+            }
+
+            if ident.repr.equals("itemof") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                let container = self.build_type(ctx, ctr.items.get!(0))?
+                let container_type = self.deref_rec(self.get_type(container))
+
+                if match Type::Seg(seg) = container_type {
+                    self.store_expr_info(ctx, ctr.id, seg.item)
+                    return Ok()
+                }
+
+                if match Type::Result(res) = container_type {
+                    self.store_expr_info(ctx, ctr.id, res.ok)
+                    return Ok()
+                }
+
+                match Type::Container(ctr_type) = container_type else {
+                    todo!()
+                }
+
+                self.store_expr_info(ctx, ctr.id, ctr_type.items.get!(0))
+                return Ok()
+            }
         }
 
-        // TODO: port
-        todo!()
+        let container = self.build_type(ctx, ctr.container)?
+
+        let items = Vec::new!<TypeId>()
+        for item in ctr.items.iter!() {
+            items.push!(self.build_type(ctx, item)?)
+        }
+
+        self.store_type(ctx, ctr.id, Type::Container(heap::new!(ContainerType {
+            container: container,
+            items: items,
+        })))
+        return Ok()
     }
 
     @unreachable()
@@ -3020,6 +3518,15 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
 
     // TODO: port
 
+    if match Type::Bool(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.byte_size = Typer::align(layout.byte_size, 1) + 1
+        return
+    }
+
     if match Type::U8(_) = type_ {
         if layout.primitives != null {
             layout.primitives.push!(type_)
@@ -3109,6 +3616,21 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         }
 
         layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    // TODO: port Enum
+
+    if match Type::Result(result) = type_ {
+        Typer::get_type_layout(registry, registry.get_type(result.ok), layout)
+        Typer::get_type_layout(registry, registry.get_type(result.err), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    if match Type::Container(ctr) = type_ {
+        Typer::get_type_layout(registry, registry.get_type(ctr.container), layout)
         return
     }
 
@@ -3250,6 +3772,55 @@ fn Typer::is_wide_int(type_: Type): Result(bool, &VoidError) {
     }
 
     return Err(VoidError::VALUE)
+}
+
+fn Typer::is_wide_int_tag(registry: &Registry, tag_type: Type, loc: Loc): Result(bool, &Error) {
+    let wide_result = Typer::is_wide_int(tag_type)
+    if wide_result.err as u32 != 0 {
+        let message = String::new_in(registry.error_arena, 16)
+        do message.push_str(it) with (
+            registry.fmt(tag_type),
+            " is not a valid int tag",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(wide_result.ok)
+}
+
+fn Typer::assert_catchable_type(&self, expr_type: Type, loc: Loc): Result(&ResultType, &Error) {
+    match Type::Result(result) = expr_type else {
+        let message = String::from_str_in(self.registry.error_arena, "Cannot catch error from expr of type ")
+        message.push_str(self.registry.fmt(expr_type))
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    let err_type_components = self.get_primitives(self.get_type(result.err))
+    let u32_components = Vec::new!<Type>()
+    u32_components.push!(Type::U32)
+
+    if err_type_components.len != 1 || !Typer::is_noop_cast(err_type_components, u32_components) {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid Result error type: ")
+        do message.push_str(it) with (
+            self.registry.fmt(self.get_type(result.err)),
+            ", must fit into U32 local",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(result)
 }
 
 fn Typer::process_const_string(&self, value: str): BytesSlice {

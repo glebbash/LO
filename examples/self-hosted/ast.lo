@@ -434,6 +434,7 @@ type FieldAccessExpr = struct {
 type CatchExpr = struct {
     id: u32,
     lhs: CodeExpr,
+    ok_bind_id: u32,
     error_bind: IdentExpr,
     catch_body: CodeBlock,
     catch_loc: Loc,

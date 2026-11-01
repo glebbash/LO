@@ -110,7 +110,11 @@ type WasmExpr = struct {
 // TODO: port other variants
 type WasmInstr = enum (&void) {
     Unreachable,
+    MemorySize,
+    MemoryGrow,
+    MemoryCopy,
     I32Const(&WasmInstrI32Const),
+    I64Const(&WasmInstrI64Const),
     Return,
     UnaryOp(&WasmInstrUnaryOp),
     BinaryOp(&WasmInstrBinaryOp),
@@ -162,6 +166,10 @@ type WasmInstrStore = struct {
 
 type WasmInstrI32Const = struct {
     value: i32,
+}
+
+type WasmInstrI64Const = struct {
+    value: i64,
 }
 
 type WasmInstrBlockStart = struct {
@@ -636,6 +644,26 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
+    if match WasmInstr::MemorySize(_) = instr {
+        WasmModule::write_u8(out, 0x3Fu8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::MemoryGrow(_) = instr {
+        WasmModule::write_u8(out, 0x40u8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::MemoryCopy(_) = instr {
+        WasmModule::write_u8(out, 0xFCu8)
+        WasmModule::write_u32(out, 10)
+        WasmModule::write_u8(out, 0x00u8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
     // TODO: port
 
     if match WasmInstr::Return(_) = instr {
@@ -686,6 +714,12 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
     if match WasmInstr::I32Const(i32_const) = instr {
         WasmModule::write_u8(out, 0x41u8)
         WasmModule::write_i32(out, i32_const.value)
+        return
+    }
+
+    if match WasmInstr::I64Const(i64_const) = instr {
+        WasmModule::write_u8(out, 0x42u8)
+        WasmModule::write_i64(out, i64_const.value)
         return
     }
 
@@ -747,6 +781,21 @@ fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
         return
     }
 
+    if match WasmInstr::I32WrapI64(_) = instr {
+        WasmModule::write_u8(out, 0xA7u8)
+        return
+    }
+
+    if match WasmInstr::I64ExtendI32s(_) = instr {
+        WasmModule::write_u8(out, 0xACu8)
+        return
+    }
+
+    if match WasmInstr::I64ExtendI32u(_) = instr {
+        WasmModule::write_u8(out, 0xADu8)
+        return
+    }
+
     // TODO: port
     todo!()
 }
@@ -772,6 +821,10 @@ fn WasmModule::write_u32(out: &Vec(u8), value: u32) {
 
 fn WasmModule::write_i32(out: &Vec(u8), value: i32) {
     WasmModule::leb128_write_signed(out, value as i64)
+}
+
+fn WasmModule::write_i64(out: &Vec(u8), value: i64) {
+    WasmModule::leb128_write_signed(out, value)
 }
 
 fn WasmModule::write_all(out: &Vec(u8), value: seg(u8)) {

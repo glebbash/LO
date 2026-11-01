@@ -369,11 +369,16 @@ fn Codegen::codegen(
     }
 
     if match CodeExpr::IntLiteral(int) = expr {
-        // TODO: port
-
-        instrs.push!(WasmInstr::I32Const(
-            self.wasm_module.arena.new!(WasmInstrI32Const { value: int.value as i32 }),
-        ))
+        let is_wide = Typer::is_wide_int(self.get_expr_type(ctx, expr))
+        if is_wide.ok {
+            instrs.push!(WasmInstr::I64Const(
+                self.wasm_module.arena.new!(WasmInstrI64Const { value: int.value as i64 }),
+            ))
+        } else {
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: int.value as i32 }),
+            ))
+        }
 
         return
     }
@@ -385,6 +390,13 @@ fn Codegen::codegen(
         }
         instrs.push!(WasmInstr::I32Const(
             self.wasm_module.arena.new!(WasmInstrI32Const { value: value }),
+        ))
+        return
+    }
+
+    if match CodeExpr::CharLiteral(char_literal) = expr {
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: char_literal.value as i32 }),
         ))
         return
     }
@@ -419,6 +431,30 @@ fn Codegen::codegen(
         instrs.push!(WasmInstr::I32Const(
             self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
         ))
+        return
+    }
+
+    if match CodeExpr::ResultLiteral(result_literal) = expr {
+        match Type::Result(result) = self.get_expr_type(ctx, expr) else {
+            @unreachable()
+        }
+
+        if result_literal.is_ok {
+            if result_literal.value != null {
+                self.codegen(ctx, instrs, *result_literal.value)
+            }
+
+            // error value
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 }),
+            ))
+
+            return
+        }
+
+        self.codegen_default_value(ctx, instrs, self.get_type(result.ok))
+        self.codegen(ctx, instrs, *result_literal.value)
+
         return
     }
 
@@ -568,6 +604,69 @@ fn Codegen::codegen(
             return
         }
 
+        if prefix_op.op_tag == PrefixOpTag::Not {
+            self.codegen(ctx, instrs, prefix_op.expr)
+
+            let operand_type = self.get_expr_type(ctx, prefix_op.expr)
+            let wasm_components = Vec::new!<WasmType>()
+            self.lower_type(operand_type, wasm_components)
+
+            if wasm_components.get!(0) == WasmType::I32 {
+                instrs.push!(WasmInstr::UnaryOp(
+                    self.wasm_module.arena.new!(WasmInstrUnaryOp { kind: WasmUnaryOpKind::I32_EQZ }),
+                ))
+            } else if wasm_components.get!(0) == WasmType::I64 {
+                instrs.push!(WasmInstr::UnaryOp(
+                    self.wasm_module.arena.new!(WasmInstrUnaryOp { kind: WasmUnaryOpKind::I64_EQZ }),
+                ))
+            } else {
+                // TODO: port F32/F64
+                todo!()
+            }
+
+            return
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Negative {
+            let operand_type = self.get_expr_type(ctx, prefix_op.expr)
+
+            if match CodeExpr::IntLiteral(int) = prefix_op.expr {
+                let is_wide = Typer::is_wide_int(operand_type)
+                if is_wide.ok {
+                    instrs.push!(WasmInstr::I64Const(
+                        self.wasm_module.arena.new!(WasmInstrI64Const { value: -(int.value as i64) }),
+                    ))
+                } else {
+                    instrs.push!(WasmInstr::I32Const(
+                        self.wasm_module.arena.new!(WasmInstrI32Const { value: -(int.value as i32) }),
+                    ))
+                }
+                return
+            }
+
+            let wasm_components = Vec::new!<WasmType>()
+            self.lower_type(operand_type, wasm_components)
+
+            if wasm_components.get!(0) == WasmType::I32 {
+                instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+                self.codegen(ctx, instrs, prefix_op.expr)
+                instrs.push!(WasmInstr::BinaryOp(
+                    self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_SUB }),
+                ))
+            } else if wasm_components.get!(0) == WasmType::I64 {
+                instrs.push!(WasmInstr::I64Const(self.wasm_module.arena.new!(WasmInstrI64Const { value: 0i64 })))
+                self.codegen(ctx, instrs, prefix_op.expr)
+                instrs.push!(WasmInstr::BinaryOp(
+                    self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I64_SUB }),
+                ))
+            } else {
+                // TODO: port F32/F64
+                todo!()
+            }
+
+            return
+        }
+
         // TODO: port
         todo!()
     }
@@ -627,6 +726,11 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::InlineFnMethodCall(call) = expr {
+        self.codegen_inline_fn_call(ctx, instrs, call.id, call.field_name.loc)
+        return
+    }
+
     if match CodeExpr::IntrinsicCall(call) = expr {
         // TODO: port
 
@@ -635,11 +739,41 @@ fn Codegen::codegen(
             return
         }
 
+        if call.fn_name.repr.equals("memory_size") {
+            instrs.push!(WasmInstr::MemorySize)
+            return
+        }
+
+        if call.fn_name.repr.equals("memory_grow") {
+            for arg in call.args.items.iter!() {
+                self.codegen(ctx, instrs, arg)
+            }
+
+            instrs.push!(WasmInstr::MemoryGrow)
+            return
+        }
+
+        if call.fn_name.repr.equals("memory_copy") {
+            for arg in call.args.items.iter!() {
+                self.codegen(ctx, instrs, arg)
+            }
+
+            instrs.push!(WasmInstr::MemoryCopy)
+            return
+        }
+
         if call.fn_name.repr.equals("data_size") {
             // placeholder, will be patched later
             instrs.push!(WasmInstr::I32Const(
                 self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 }),
             ))
+            return
+        }
+
+        if call.fn_name.repr.equals("seg") {
+            for arg in call.args.items.iter!() {
+                self.codegen(ctx, instrs, arg)
+            }
             return
         }
 
@@ -922,6 +1056,37 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::Defer(defer_expr) = expr {
+        // find first non-inline-fn scope
+        let scope_stack = self.module_info.at!(ctx.module_id).scope_stack
+        let scope_to_defer = scope_stack.at!(scope_stack.len - 1)
+        for i in 0..scope_stack.len {
+            let scope = scope_stack.at!(scope_stack.len - 1 - i)
+            if scope.kind != ScopeKind::InlineFn {
+                scope_to_defer = scope
+                break
+            }
+        }
+
+        let expr_instrs = Vec::new!<WasmInstr>()
+        self.codegen(ctx, expr_instrs, defer_expr.expr)
+        scope_to_defer.deferred_exprs.push!(expr_instrs)
+
+        return
+    }
+
+    if match CodeExpr::Catch(catch_expr) = expr {
+        self.codegen_catch(
+            ctx,
+            instrs,
+            catch_expr.lhs,
+            catch_expr.ok_bind_id,
+            catch_expr.error_bind.id,
+            ref!(catch_expr.catch_body),
+        )
+        return
+    }
+
     // TODO: port
 
     todo!()
@@ -976,12 +1141,76 @@ fn Codegen::codegen_inline_fn_call(
     self.exit_scope(ctx)
 }
 
-fn Codegen::codegen_catch(&self) {
-    todo!()
+fn Codegen::codegen_catch(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    expr: CodeExpr,
+    ok_bind_id: ExprId,
+    err_bind_id: ExprId,
+    catch_body: &?CodeBlock,
+) {
+    self.enter_scope(ctx, ScopeKind::Block) // enter catch scope
+
+    // put result on the stack
+    self.codegen(ctx, instrs, expr)
+
+    // pop error
+    let err_local = self.get_local_info(ctx, err_bind_id, expr.loc())
+    self.codegen_local_set(instrs, self.get_type(err_local.var_type_id), err_local.local_index)
+
+    // pop ok
+    let ok_local = self.get_local_info(ctx, ok_bind_id, expr.loc())
+    self.codegen_local_set(instrs, self.get_type(ok_local.var_type_id), ok_local.local_index)
+
+    // cond: error != 0
+    self.codegen_local_get(instrs, self.get_type(err_local.var_type_id), err_local.local_index)
+
+    let in_out_type_index = self.get_block_inout_type(Vec::new!<Type>(), self.get_type(ok_local.var_type_id))
+    instrs.push!(WasmInstr::BlockStart(self.wasm_module.arena.new!(WasmInstrBlockStart {
+        block_kind: WasmBlockKind::If,
+        block_type: WasmBlockType::InOut(self.wasm_module.arena.new!(WasmBlockTypeInOut {
+            type_index: in_out_type_index,
+        })),
+    })))
+
+    // catch error
+    if catch_body != null {
+        self.codegen_code_block(ctx, instrs, catch_body)
+    } else {
+        // TODO: port
+        todo!()
+    }
+
+    instrs.push!(WasmInstr::Else)
+
+    // no error, push ok value
+    self.codegen_local_get(instrs, self.get_type(ok_local.var_type_id), ok_local.local_index)
+
+    instrs.push!(WasmInstr::BlockEnd)
+
+    self.exit_scope(ctx) // exit catch scope
 }
 
-fn Codegen::get_block_inout_type(&self) {
-    todo!()
+fn Codegen::get_block_inout_type(&self, inputs: &Vec(Type), output: Type): u32 {
+    let inout_fn_type = WasmFnType {
+        inputs: Vec::new!<WasmType>(),
+        outputs: Vec::new!<WasmType>(),
+    }
+    for input in inputs.iter!() {
+        self.lower_type(input, inout_fn_type.inputs)
+    }
+    self.lower_type(output, inout_fn_type.outputs)
+
+    for type_index in 0..self.wasm_fn_types.len {
+        let fn_type = self.wasm_fn_types.get!(type_index)
+        if fn_type.equals(inout_fn_type) {
+            return type_index
+        }
+    }
+
+    self.wasm_fn_types.push!(inout_fn_type)
+    return self.wasm_fn_types.len - 1
 }
 
 fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): Result(VarInfo, &VoidError) {
@@ -1309,6 +1538,57 @@ fn Codegen::codegen_load_or_store(
         return // noop
     }
 
+    if match Type::Bool(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32_8,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32U8,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::U8(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32_8,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32U8,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::Null(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I32,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
     if match Type::U32(_) = pointee_type {
         if is_store {
             instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
@@ -1369,6 +1649,42 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
+    // TODO: port Enum
+
+    if match Type::U64(_) = pointee_type {
+        if is_store {
+            instrs.push!(WasmInstr::Store(self.wasm_module.arena.new!(WasmInstrStore {
+                kind: WasmStoreKind::I64,
+                align: 0,
+                offset: offset,
+            })))
+        } else {
+            instrs.push!(WasmInstr::Load(self.wasm_module.arena.new!(WasmInstrLoad {
+                kind: WasmLoadKind::I64,
+                align: 0,
+                offset: offset,
+            })))
+        }
+        return
+    }
+
+    if match Type::Result(result) = pointee_type {
+        let ok = self.get_type(result.ok)
+        let err = self.get_type(result.err)
+
+        let ok_layout = ref!(TypeLayout::new())
+        Typer::get_type_layout(self.registry, ok, ok_layout)
+
+        self.codegen_load_or_store(instrs, err, offset + ok_layout.byte_size, is_store)
+        self.codegen_load_or_store(instrs, ok, offset, is_store)
+        return
+    }
+
+    if match Type::Container(ctr) = pointee_type {
+        self.codegen_load_or_store(instrs, self.get_type(ctr.container), offset, is_store)
+        return
+    }
+
     // TODO: port
     todo!()
 }
@@ -1410,7 +1726,77 @@ fn Codegen::emit_deferred_for_return(
     // TODO: port
 }
 
-fn Codegen::codegen_default_value(&self) {
+fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), value_type: Type) {
+    if match Type::Never(_) = value_type {
+        return
+    }
+    if match Type::Void(_) = value_type {
+        return
+    }
+
+    if match Type::Bool(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::U8(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::U32(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::I32(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::Null(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+    if match Type::Pointer(_) = value_type {
+        instrs.push!(WasmInstr::I32Const(self.wasm_module.arena.new!(WasmInstrI32Const { value: 0 as i32 })))
+        return
+    }
+
+    if match Type::U64(_) = value_type {
+        instrs.push!(WasmInstr::I64Const(self.wasm_module.arena.new!(WasmInstrI64Const { value: 0i64 })))
+        return
+    }
+
+    if match Type::Struct(struct_type) = value_type {
+        let struct_def = self.registry.structs.at!(struct_type.struct_index)
+        for &field in struct_def.fields.iter!() {
+            self.codegen_default_value(ctx, instrs, self.get_type(field.field_type_id))
+        }
+        return
+    }
+
+    // TODO: port Enum
+
+    if match Type::Result(result) = value_type {
+        self.codegen_default_value(ctx, instrs, self.get_type(result.ok))
+        self.codegen_default_value(ctx, instrs, self.get_type(result.err))
+        return
+    }
+
+    if match Type::Seg(seg) = value_type {
+        let ptr_type = Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: false,
+            is_nullable: false,
+        }))
+        self.codegen_default_value(ctx, instrs, ptr_type)
+        self.codegen_default_value(ctx, instrs, Type::U32)
+        return
+    }
+
+    if match Type::Container(ctr) = value_type {
+        self.codegen_default_value(ctx, instrs, self.get_type(ctr.container))
+        return
+    }
+
+    // TODO: port
     todo!()
 }
 
@@ -1478,6 +1864,19 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    // TODO: port Enum
+
+    if match Type::Result(result) = type_ {
+        self.lower_type(self.get_type(result.ok), wasm_types)
+        self.lower_type(self.get_type(result.err), wasm_types)
+        return
+    }
+
+    if match Type::Container(ctr) = type_ {
+        self.lower_type(self.get_type(ctr.container), wasm_types)
+        return
+    }
+
     // TODO: port
 
     todo!()
@@ -1524,6 +1923,22 @@ fn Codegen::push_wasm_dbg_name_section_locals(
 
     // TODO: port
 
+    if match Type::Bool(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::U8(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
     if match Type::U32(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
@@ -1533,6 +1948,14 @@ fn Codegen::push_wasm_dbg_name_section_locals(
     }
 
     if match Type::I32(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::U64(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
             local_name: String::from_str(local_name),
@@ -1562,6 +1985,71 @@ fn Codegen::push_wasm_dbg_name_section_locals(
             )
         }
         return local_index
+    }
+
+    // TODO: port Enum
+
+    if match Type::Result(result) = local_type {
+        let ok_local_name = String::new_in(self.registry.error_arena, 16)
+        do ok_local_name.push_str(it) with (local_name, "#ok")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            self.get_type(result.ok),
+            ok_local_name.as_str(),
+        )
+
+        let err_local_name = String::new_in(self.registry.error_arena, 16)
+        do err_local_name.push_str(it) with (local_name, "#err")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            self.get_type(result.err),
+            err_local_name.as_str(),
+        )
+
+        return local_index
+    }
+
+    if match Type::Seg(seg) = local_type {
+        let ptr_type = Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: false,
+            is_nullable: false,
+        }))
+
+        let len_local_name = String::new_in(self.registry.error_arena, 16)
+        do len_local_name.push_str(it) with (local_name, ".len")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            Type::U32,
+            len_local_name.as_str(),
+        )
+
+        let ptr_local_name = String::new_in(self.registry.error_arena, 16)
+        do ptr_local_name.push_str(it) with (local_name, ".ptr")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            ptr_type,
+            ptr_local_name.as_str(),
+        )
+
+        return local_index
+    }
+
+    if match Type::Container(ctr) = local_type {
+        return self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            self.get_type(ctr.container),
+            local_name,
+        )
     }
 
     // TODO: port
@@ -1603,6 +2091,64 @@ fn Codegen::get_type(&self, type_id: u32): Type {
 }
 
 fn Codegen::get_cast_instr(casted_from: Type, casted_to: Type): Result(WasmInstr, &VoidError) {
-    // TODO: port
+    let to_is_wide = false
+    if match Type::I64(_) = casted_to {
+        to_is_wide = true
+    }
+    if match Type::U64(_) = casted_to {
+        to_is_wide = true
+    }
+
+    if to_is_wide {
+        if match Type::I8(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32s)
+        }
+        if match Type::I16(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32s)
+        }
+        if match Type::I32(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32s)
+        }
+
+        if match Type::U8(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32u)
+        }
+        if match Type::U16(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32u)
+        }
+        if match Type::U32(_) = casted_from {
+            return Ok(WasmInstr::I64ExtendI32u)
+        }
+    }
+
+    let to_is_narrow = false
+    if match Type::I8(_) = casted_to {
+        to_is_narrow = true
+    }
+    if match Type::U8(_) = casted_to {
+        to_is_narrow = true
+    }
+    if match Type::I16(_) = casted_to {
+        to_is_narrow = true
+    }
+    if match Type::U16(_) = casted_to {
+        to_is_narrow = true
+    }
+    if match Type::I32(_) = casted_to {
+        to_is_narrow = true
+    }
+    if match Type::U32(_) = casted_to {
+        to_is_narrow = true
+    }
+
+    if to_is_narrow {
+        if match Type::I64(_) = casted_from {
+            return Ok(WasmInstr::I32WrapI64)
+        }
+        if match Type::U64(_) = casted_from {
+            return Ok(WasmInstr::I32WrapI64)
+        }
+    }
+
     return Err(VoidError::VALUE)
 }

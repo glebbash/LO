@@ -1224,6 +1224,7 @@ fn Parser::parse_code_expr_postfix(
         return Ok(CodeExpr::Catch(self.ast_arena.new!(CatchExpr {
             id: self.next_expr_id(),
             lhs: primary,
+            ok_bind_id: self.next_expr_id(),
             error_bind: error_bind,
             catch_body: catch_body,
             catch_loc: op_loc,
