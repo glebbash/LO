@@ -33,6 +33,12 @@ fn Type::equals(self, other): bool {
         }
     }
 
+    if match Type::Null(_) = self {
+        if match Type::Null(_) = other {
+            return true
+        }
+    }
+
     if match Type::Void(_) = self {
         if match Type::Void(_) = other {
             return true
@@ -45,8 +51,62 @@ fn Type::equals(self, other): bool {
         }
     }
 
+    if match Type::U8(_) = self {
+        if match Type::U8(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I8(_) = self {
+        if match Type::I8(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U16(_) = self {
+        if match Type::U16(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I16(_) = self {
+        if match Type::I16(_) = other {
+            return true
+        }
+    }
+
     if match Type::U32(_) = self {
         if match Type::U32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I32(_) = self {
+        if match Type::I32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U64(_) = self {
+        if match Type::U64(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I64(_) = self {
+        if match Type::I64(_) = other {
+            return true
+        }
+    }
+
+    if match Type::F32(_) = self {
+        if match Type::F32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::F64(_) = self {
+        if match Type::F64(_) = other {
             return true
         }
     }
@@ -1555,7 +1615,7 @@ fn Typer::get_fn_param_type(
     }
 
     if match FnParamType::Type(param_type) = fn_param.param_type {
-        let infer_type_name = Typer::get_infer_type_name(fn_param)?
+        let infer_type_name = Typer::get_infer_type_name(self.registry, fn_param)?
         if infer_type_name != null {
             if !infer_allowed {
                 return Err(self.registry.error_arena.new!(Error {
@@ -3396,6 +3456,18 @@ fn Typer::get_binary_op_kind(
             return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
         }
         // signed = false
+    } else if match Type::Never(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Void(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Struct(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Result(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Seg(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Container(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
     } else {
         // TODO: port
         todo!()
@@ -3737,15 +3809,24 @@ fn Typer::type_inline_fn_call(
         arg_type_ids.push!(self.type_code_expr_and_load(parent_ctx, arg)?)
     }
     if arg_type_ids.len != inline_fn_def.decl.params.len {
-        // TODO: port
-        todo!()
+        let message = String::from_str_in(self.registry.error_arena, "Invalid number of inline fn args, expected ")
+        do message.push_str(it) with (
+            inline_fn_def.decl.params.len.to_tmp_str!(),
+            ", got ",
+            arg_type_ids.len.to_tmp_str!(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
     }
 
     for i in 0..arg_type_ids.len {
         let inline_fn_param = inline_fn_def.decl.params.get!(i)
         let type_id = arg_type_ids.get!(i)
 
-        let infer_type_name = Typer::get_infer_type_name(ref!(inline_fn_param))?
+        let infer_type_name = Typer::get_infer_type_name(self.registry, ref!(inline_fn_param))?
         if infer_type_name != null {
             self.define_type(inline_ctx, *infer_type_name, self.get_type(type_id), inline_fn_param.loc)
         }
@@ -3786,8 +3867,18 @@ fn Typer::type_inline_fn_call(
     }
 
     if !self.is_types_compatible(inline_fn_param_types, arg_type_ids) {
-        // TODO: port
-        todo!()
+        let message = String::from_str_in(self.registry.error_arena, "Invalid inline fn args, expected [")
+        do message.push_str(it) with (
+            self.registry.fmt_many(inline_fn_param_types),
+            "], got [",
+            self.registry.fmt_many(arg_type_ids),
+            "]",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
     }
 
     let return_type_id = self.intern_type(Type::Void)
@@ -3853,7 +3944,7 @@ fn Typer::type_inline_fn_call(
     return Ok()
 }
 
-fn Typer::get_infer_type_name(fn_param: &FnParam): Result(&?str, &Error) {
+fn Typer::get_infer_type_name(registry: &Registry, fn_param: &FnParam): Result(&?str, &Error) {
     match FnParamType::Type(param_type) = fn_param.param_type else {
         return Ok(null)
     }
@@ -3871,13 +3962,17 @@ fn Typer::get_infer_type_name(fn_param: &FnParam): Result(&?str, &Error) {
     }
 
     if ctr.items.len != 1 {
-        // TODO: port
-        todo!()
+        return Err(registry.error_arena.new!(Error {
+            message: String::from_str_in(registry.error_arena, "Invalid `infer` call, expected 1 named type argument"),
+            loc: ctr.loc,
+        }))
     }
 
     match TypeExpr::Named(item_ident) = ctr.items.get!(0) else {
-        // TODO: port
-        todo!()
+        return Err(registry.error_arena.new!(Error {
+            message: String::from_str_in(registry.error_arena, "Invalid `infer` call, expected 1 named type argument"),
+            loc: ctr.loc,
+        }))
     }
 
     return Ok(ref!(item_ident.repr))
@@ -4473,9 +4568,41 @@ fn Typer::is_types_compatible(&self, slots: &Vec(TypeId), values: &Vec(TypeId)):
 }
 
 fn Typer::is_type_compatible(&self, slot: Type, value: Type): bool {
-    // TODO: allow this for self arguments only
-    // TODO: port
-    return true
+    if match Type::Pointer(slot_ptr) = slot {
+        if !slot_ptr.is_sequence {
+            if match Type::Null(_) = value {
+                if slot_ptr.is_nullable {
+                    return true
+                }
+            }
+
+            if match Type::Void(_) = self.get_type(slot_ptr.pointee) {
+                if match Type::Pointer(value_ptr) = value {
+                    return slot_ptr.is_nullable || !value_ptr.is_nullable
+                }
+            }
+
+            if match Type::Pointer(value_ptr) = value {
+                return self.is_type_compatible(self.get_type(slot_ptr.pointee), self.get_type(value_ptr.pointee))
+            }
+        }
+    }
+
+    if match Type::Container(ctr) = value {
+        if match Type::Container(slot_ctr) = slot {
+            return self.is_type_compatible(self.get_type(slot_ctr.container), self.get_type(ctr.container)) \
+                && self.is_types_compatible(slot_ctr.items, ctr.items)
+        }
+
+        // TODO: allow this for self arguments only
+        return self.is_type_compatible(slot, self.get_type(ctr.container))
+    }
+
+    if match Type::Never(_) = value {
+        return true
+    }
+
+    return slot.equals(value)
 }
 
 fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
