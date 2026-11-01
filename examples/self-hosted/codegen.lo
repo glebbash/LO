@@ -343,7 +343,7 @@ fn Codegen::codegen_code_block(
         self.codegen(ctx, instrs, expr)
     }
 
-    // TODO: port
+    self.emit_deferred(self.current_scope(ctx), instrs)
 
     let expr_info = self.get_expr_info(ctx, block.block_expr_id, block.loc)
     let block_info = self.registry.block_info.get!(expr_info)
@@ -778,6 +778,11 @@ fn Codegen::codegen(
         }
 
         // TODO: port
+
+        let message = String::new_in(self.registry.error_arena, 16)
+        do message.push_str(it) with ("Unknown intrinsic: ", call.fn_name.repr)
+
+        self.registry.reporter.abort_due_to_compiler_bug(message.as_str(), call.fn_name.loc)
     }
 
     if match CodeExpr::If(if_expr) = expr {
@@ -1714,8 +1719,11 @@ fn Codegen::create_or_get_addr_local(&self, ctx: &ExprContext): u32 {
     return addr_local_index
 }
 
-fn Codegen::emit_deferred(&self) {
-    todo!()
+fn Codegen::emit_deferred(&self, scope: &Scope, instrs: &Vec(WasmInstr)) {
+    for i in 0..scope.deferred_exprs.len {
+        let expr_instrs = scope.deferred_exprs.get!(scope.deferred_exprs.len - i - 1)
+        instrs.push_all!(expr_instrs.iter!())
+    }
 }
 
 fn Codegen::emit_deferred_for_return(
@@ -1723,7 +1731,11 @@ fn Codegen::emit_deferred_for_return(
     ctx: &ExprContext,
     instrs: &Vec(WasmInstr),
 ) {
-    // TODO: port
+    let scope_stack = self.module_info.at!(ctx.module_id).scope_stack
+    for i in 0..scope_stack.len {
+        let scope = scope_stack.at!(scope_stack.len - i - 1)
+        self.emit_deferred(scope, instrs)
+    }
 }
 
 fn Codegen::codegen_default_value(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), value_type: Type) {

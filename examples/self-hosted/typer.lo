@@ -907,6 +907,14 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
         }
 
         if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+            if intrinsic.fn_name.repr.equals("include") {
+                continue // skip, was processed in `Compiler.include`
+            }
+
+            if intrinsic.fn_name.repr.equals("str_literal_type") {
+                continue // skip, was processed in `pass_get_str_literal_type`
+            }
+
             if intrinsic.fn_name.repr.equals("use_memory") {
                 if self.registry.memory_info != null {
                     let existing_memory = *self.registry.memory_info
@@ -1044,11 +1052,112 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 }
             }
 
-            // TODO: port
-            continue
-        }
+            if intrinsic.fn_name.repr.equals("export_existing") {
+                let from_root = false
+                let in_name = null as &?IdentExpr
+                let out_name = null as &?StringLiteralExpr
 
-        // TODO: port
+                if intrinsic.type_args.len != 0 {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                for arg in intrinsic.args.items.iter!() {
+                    if match CodeExpr::Ident(ident) = arg {
+                        if ident.repr.equals("from_root") {
+                            from_root = true
+                            continue
+                        }
+
+                        in_name = ident
+                        continue
+                    }
+
+                    match CodeExpr::Assign(assign) = arg else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    match CodeExpr::Ident(key) = assign.lhs else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    if key.repr.equals("out") {
+                        match CodeExpr::StringLiteral(value) = assign.rhs else {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                            continue
+                        }
+
+                        out_name = value
+                        continue
+                    }
+
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                if in_name == null {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                    continue
+                }
+
+                let target_ctx = ctx
+                if from_root {
+                    target_ctx = self.module_info.get!(1).ctx
+                }
+
+                let fn_index_result = self.get_fn_index_for_call(target_ctx, (*in_name).repr, (*in_name).loc)
+                if fn_index_result.err as u32 != 0 {
+                    // don't report any errors if function to be exported
+                    //   could be in another module but only one module is inspected
+                    self.report_error(fn_index_result.err)
+                    continue
+                }
+                let fn_index = fn_index_result.ok
+                let fn_info = self.registry.functions.at!(fn_index)
+
+                // TODO: port inspection
+
+                let exported_as = String::from_str((*in_name).repr)
+                if out_name != null {
+                    exported_as = (*out_name).value.clone()
+                }
+
+                fn_info.exported_as.push!(exported_as)
+
+                continue
+
+                fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+                    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+                    do message.push_str(it) with (
+                        fn_name.repr,
+                        "(<ident>, [out = <str-literal>, from_root])",
+                    )
+
+                    return arena.new!(Error {
+                        message: message,
+                        loc: fn_name.loc,
+                    })
+                }
+            }
+
+            if intrinsic.fn_name.repr.equals("forbid_memory") {
+                // TODO: port
+                todo!()
+            }
+
+            if intrinsic.fn_name.repr.equals("inspect_stats") {
+                // skip, will be processed in `run_delayed_actions`
+                continue
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Unknown intrinsic: ")
+            message.push_str(intrinsic.fn_name.repr)
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: intrinsic.loc,
+            }))
+        }
     }
 }
 
@@ -1886,12 +1995,28 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }))
         }
 
-        // TODO: port
         let result_type_id = lhs_type_id
-        if infix_op.op_tag == InfixOpTag::Equal || infix_op.op_tag == InfixOpTag::NotEqual || infix_op.op_tag == InfixOpTag::Less || infix_op.op_tag == InfixOpTag::And || infix_op.op_tag == InfixOpTag::Or {
+        if infix_op.op_tag == InfixOpTag::Equal \
+            || infix_op.op_tag == InfixOpTag::NotEqual \
+            || infix_op.op_tag == InfixOpTag::Less \
+            || infix_op.op_tag == InfixOpTag::Greater \
+            || infix_op.op_tag == InfixOpTag::LessEqual \
+            || infix_op.op_tag == InfixOpTag::GreaterEqual \
+            || infix_op.op_tag == InfixOpTag::And \
+            || infix_op.op_tag == InfixOpTag::Or
+        {
             result_type_id = self.intern_type(Type::Bool)
         }
-        if infix_op.op_tag == InfixOpTag::AddAssign || infix_op.op_tag == InfixOpTag::SubAssign || infix_op.op_tag == InfixOpTag::MulAssign {
+        if infix_op.op_tag == InfixOpTag::AddAssign \
+            || infix_op.op_tag == InfixOpTag::SubAssign \
+            || infix_op.op_tag == InfixOpTag::MulAssign \
+            || infix_op.op_tag == InfixOpTag::DivAssign \
+            || infix_op.op_tag == InfixOpTag::ModAssign \
+            || infix_op.op_tag == InfixOpTag::BitAndAssign \
+            || infix_op.op_tag == InfixOpTag::BitOrAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftLeftAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftRightAssign
+        {
             result_type_id = self.intern_type(Type::Void)
         }
 
