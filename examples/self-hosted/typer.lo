@@ -679,7 +679,22 @@ fn Typer::resolve_struct_layout(&self, struct_def: &StructDef): bool {
             self.report_error(field_type_result.err)
         }
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                struct_def.struct_name,
+                ".",
+                field.field_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(field_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: field.field_name.loc,
+                linked_loc: null,
+            })
+        }
 
         let ok = self.resolve_type_size(struct_def.ctx, field_type_id)
         if !ok {
@@ -982,7 +997,7 @@ fn Typer::get_struct_field_info(
                 field_type_id: field.field_type_id,
                 field_index: field.field_index,
                 byte_offset: field.byte_offset,
-                loc: ref!(field.loc),
+                loc: &field.loc,
             })
         }
     }
@@ -1366,13 +1381,23 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 if fn_index_result.err as u32 != 0 {
                     // don't report any errors if function to be exported
                     //   could be in another module but only one module is inspected
+                    if from_root && self.reporter.in_inspection_mode {
+                        continue
+                    }
+
                     self.report_error(fn_index_result.err)
                     continue
                 }
                 let fn_index = fn_index_result.ok
                 let fn_info = self.registry.functions.at!(fn_index)
 
-                // TODO: port inspection
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(InspectInfo {
+                        message: String::from_str_in(self.reporter.inspection_arena, (*in_name).repr),
+                        loc: (*in_name).loc,
+                        linked_loc: &fn_info.definition_loc,
+                    })
+                }
 
                 let exported_as = String::from_str((*in_name).repr)
                 if out_name != null {
@@ -1501,6 +1526,7 @@ fn Typer::get_fn_param_type(
     todo!()
 }
 
+// TODO!: fix this returning heap alloced and never freed TypeId instead of optional
 fn Typer::get_fn_self_type(
     &self,
     ctx: &TyContext,
@@ -1545,14 +1571,14 @@ fn Typer::get_fn_self_type(
 
     // this workaround is needed because `seg` itself is not a valid type
     if self_type_name.equals("seg") {
-        return Ok(ref!(self.intern_type(Type::Seg(heap::new!(SegType {
+        return Ok(heap::new!(self.intern_type(Type::Seg(heap::new!(SegType {
             item: self.intern_type(Type::Never),
         })))))
     }
 
     // this workaround is needed because `Result` itself is not a valid type
     if self_type_name.equals("Result") {
-        return Ok(ref!(self.intern_type(Type::Result(heap::new!(ResultType {
+        return Ok(heap::new!(self.intern_type(Type::Result(heap::new!(ResultType {
             ok: self.intern_type(Type::Never),
             err: self.intern_type(Type::Never),
         })))))
@@ -1560,7 +1586,7 @@ fn Typer::get_fn_self_type(
 
     let self_type_id = self.get_type_id_or_err(ctx, self_type_name, self_type_loc)?
 
-    return Ok(ref!(self_type_id))
+    return Ok(heap::new!(self_type_id))
 }
 
 fn Typer::type_fns(&self) {
@@ -1854,7 +1880,13 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         }
         let struct_index = symbol.col_index
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(InspectInfo {
+                message: String::from_str_in(self.reporter.inspection_arena, "struct { ... }"),
+                loc: struct_literal.struct_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         self.store_type(ctx, struct_literal.id, Type::Struct(heap::new!(StructType {
             struct_index: struct_index,
@@ -1872,7 +1904,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
                 }))
                 continue
             }
-            let struct_field = struct_def.fields.get!(field_index)
+            let struct_field = struct_def.fields.at!(field_index)
 
             if !field_literal.key.equals(struct_field.field_name) {
                 let message = String::from_str_in(
@@ -1914,7 +1946,22 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
                 }))
             }
 
-            // TODO: port inspection
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    struct_literal.struct_name.repr,
+                    ".",
+                    struct_field.field_name,
+                    ": ",
+                    self.registry.fmt(field_value_type),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: field_literal.key_loc,
+                    linked_loc: &struct_field.loc,
+                })
+            }
         }
 
         // TODO: port missing struct fields check
@@ -2422,7 +2469,20 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
             let variant = enum_def.variants.at!(enum_ctor.variant_index)
 
-            // TODO: port inspection
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    " // ",
+                    enum_ctor.variant_index.to_tmp_str!(),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: call.fn_name.loc,
+                    linked_loc: &enum_ctor.loc,
+                })
+            }
 
             for arg in call.args.items.iter!() {
                 self.report_if_err!(self.type_code_expr(ctx, arg))
@@ -2887,7 +2947,19 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
             self.process_memory_op(prefix_op.loc)
 
-            // TODO: port inspection
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    "<deref>: ",
+                    self.registry.fmt(self.get_type(ptr.pointee)),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                    linked_loc: null,
+                })
+            }
 
             self.store_expr_info(ctx, prefix_op.id, ptr.pointee)
             return Ok()
@@ -3031,7 +3103,22 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
 
         let field = Typer::get_struct_field_info(self.registry, self.get_type(lhs_type_id), field_access)?
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ".",
+                field_access.field_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(field.field_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: field_access.field_name.loc,
+                linked_loc: field.loc,
+            })
+        }
 
         self.store_type(ctx, field_access.id, self.get_type(field.field_type_id))
         return Ok()
@@ -3656,7 +3743,48 @@ fn Typer::type_inline_fn_call(
         return_type_id: return_type_id,
     })
 
-    // TODO: port inspection
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 64)
+
+        message.push_str("inline fn ")
+        message.push_str(inline_fn_name)
+        if type_args.len > 0 {
+            do message.push_str(it) with ("<", self.registry.fmt_many(type_args), ">")
+        }
+        message.push_str("(")
+
+        for i in 0..inline_fn_param_types.len {
+            if i != 0 {
+                message.push_str(", ")
+            }
+
+            let param = inline_fn_def.decl.params.at!(i)
+            message.push_str(param.param_name.repr)
+
+            let is_self_param = false
+            if match FnParamType::Self(_) = param.param_type {
+                is_self_param = true
+            }
+            if match FnParamType::SelfRef(_) = param.param_type {
+                is_self_param = true
+            }
+            if !is_self_param {
+                message.push_str(": ")
+                message.push_str(self.registry.fmt(self.get_type(inline_fn_param_types.get!(i))))
+            }
+        }
+
+        do message.push_str(it) with (
+            "): ",
+            self.registry.fmt(self.get_type(return_type_id)),
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: &inline_fn_def.decl.fn_name.loc,
+        })
+    }
 
     return Ok()
 }
@@ -3887,7 +4015,21 @@ fn Typer::get_value_info(
             enum_index: enum_ctor.enum_index,
         }))
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "inline let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(var_type),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &enum_ctor.loc,
+            })
+        }
 
         return Ok(ValueInfo {
             kind: ValueKind::EnumConstructor,
@@ -4172,7 +4314,16 @@ fn Typer::get_type_id_or_err(
     }
 
     if symbol.kind == TySymbolKind::Struct {
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with ("struct ", type_name, " { ... }")
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         return Ok(self.intern_type(Type::Struct(heap::new!(StructType {
             struct_index: symbol.col_index,
@@ -4180,7 +4331,16 @@ fn Typer::get_type_id_or_err(
     }
 
     if symbol.kind == TySymbolKind::Enum {
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with ("enum ", type_name, " { ... }")
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         return Ok(self.intern_type(Type::Enum(heap::new!(EnumType {
             enum_index: symbol.col_index,
@@ -4192,12 +4352,19 @@ fn Typer::get_type_id_or_err(
 
         // don't print inspection for built-ins
         if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
-            // TODO: port:
-            // self.reporter.print_inspection(InspectInfo {
-            //     message: format!("type {type_name} = {}", self.registry.fmt(self.get_type(type_id))),
-            //     loc: *loc,
-            //     linked_loc: Some(symbol.loc),
-            // })
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "type ",
+                type_name,
+                " = ",
+                self.registry.fmt(self.get_type(type_alias.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
         }
 
         return Ok(type_alias.type_id)
@@ -4888,7 +5055,25 @@ fn Typer::type_match_header(&self, ctx: &TyContext, match_header: &MatchHeader):
         }
     }
 
-    // TODO: port inspection
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 32)
+        do message.push_str(it) with (
+            self.registry.fmt(Type::Enum(heap::new!(EnumType {
+                enum_index: enum_ctor.enum_index,
+            }))),
+            "\n",
+            match_header.variant_name.repr,
+            "(",
+            self.registry.fmt(self.get_type(enum_variant.variant_type_id)),
+            ")",
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: match_header.variant_name.loc,
+            linked_loc: &enum_variant.loc,
+        })
+    }
 
     let _ = self.define_local(
         ctx,

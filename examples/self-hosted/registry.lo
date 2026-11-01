@@ -551,10 +551,65 @@ fn Registry::fmt(&self, type_: Type): str {
         return self.enums.at!(enum_type.enum_index).enum_name
     }
 
-    // TODO: port other Type variants
-    todo!()
+    if match Type::Pointer(ptr) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        out.push_str("&")
+        if ptr.is_nullable {
+            out.push_str("?")
+        }
+        if ptr.is_sequence {
+            out.push_str("[]")
+        }
+        out.push_str(self.fmt(self.get_type(ptr.pointee)))
+        return out.as_str()
+    }
+
+    if match Type::Result(result) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        do out.push_str(it) with (
+            "Result(",
+            self.fmt(self.get_type(result.ok)),
+            ", ",
+            self.fmt(self.get_type(result.err)),
+            ")",
+        )
+        return out.as_str()
+    }
+
+    if match Type::Seg(seg) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        do out.push_str(it) with (
+            "seg(",
+            self.fmt(self.get_type(seg.item)),
+            ")",
+        )
+        return out.as_str()
+    }
+
+    if match Type::Container(ctr) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        out.push_str(self.fmt(self.get_type(ctr.container)))
+        out.push_str("(")
+        for i in 0..ctr.items.len {
+            if i != 0 {
+                out.push_str(", ")
+            }
+            out.push_str(self.fmt(self.get_type(ctr.items.get!(i))))
+        }
+        out.push_str(")")
+        return out.as_str()
+    }
+
+    @unreachable()
 }
 
-fn Registry::fmt_many() {
-    todo!()
+fn Registry::fmt_many(&self, type_ids: &Vec(TypeId)): str {
+    let out = String::new_in(self.error_arena, 16)
+    for i in 0..type_ids.len {
+        if i != 0 {
+            out.push_str(", ")
+        }
+        out.push_str(self.fmt(self.get_type(type_ids.get!(i))))
+    }
+    return out.as_str()
 }
