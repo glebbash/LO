@@ -1085,6 +1085,80 @@ async function commandTest() {
                 });
             }
         });
+
+        describe("compiler inspections match initial", () => {
+            const files = [
+                "examples/test/42.lo",
+                "examples/test/hex-and-shifts.lo",
+                "examples/test/add.lo",
+                "examples/test/locals.lo",
+                "examples/test/short-circuit.lo",
+                "examples/test/factorial.lo",
+                "examples/test/nested-fn.lo",
+                "examples/test/include.lo",
+                "examples/test/else-if.lo",
+                "examples/test/import.lo",
+                // "examples/test/demos/hello-world-raw.lo",
+                // "examples/test/globals.lo",
+                // "examples/test/while-loop.lo",
+                // "examples/test/for-loop.lo",
+                // "examples/test/for-each-loop.lo",
+                // "examples/test/methods.lo",
+                // "examples/test/nested-if-break.lo",
+                // "examples/test/struct.lo",
+                // "examples/test/auto-forward-decl.lo",
+                // "examples/test/struct-value-field-access.lo",
+                // "examples/test/decl-nesting.lo",
+                // "examples/test/struct-ref.lo",
+                // "examples/test/inline-fn.lo",
+                // "examples/lib/wasi.lo",
+                // "examples/test/string-pooling.lo",
+                // "examples/test/zst-noop.lo",
+                // "examples/lib/std.lo",
+                // "examples/test/vec.test.lo",
+                // "examples/test/demos/hello-world.lo",
+                // "examples/test/demos/echo.lo",
+                // "examples/test/args.test.lo",
+                // "examples/test/demos/cat.lo",
+                // "examples/test/tracing.lo",
+                // "examples/test/struct-in-struct.lo",
+                // "examples/test/heap-alloc.lo",
+                // "examples/test/defer.lo",
+                // "examples/test/errors.lo",
+                // "examples/test/do-with.lo",
+                // "examples/test/enums.lo",
+                // "examples/test/special-field-access.lo",
+                // "examples/test/if-match-chain.lo",
+                // "examples/test/demos/aoc2020/1.lo",
+                // "examples/test/demos/aoc2020/1-part2.lo",
+                // "examples/test/demos/aoc2020/2.lo",
+                // "examples/test/demos/aoc2020/2-part2.lo",
+                // "examples/test/demos/aoc2020/3.lo",
+                // "examples/test/demos/aoc2020/3-part2.lo",
+                // "examples/test/demos/aoc2020/4.lo",
+                // "examples/test/demos/aoc2020/4-part2.lo",
+                // "examples/test/demos/aoc2020/5.lo",
+                // "examples/test/demos/aoc2020/5-part2.lo",
+                // "examples/test/demos/aoc2023/1.lo",
+                // "examples/test/demos/aoc2023/1-part2.lo",
+                // "examples/test/demos/wasm4/src/blink.lo",
+                // "examples/test/demos/wasm4/src/dark-maze.lo",
+                // "examples/test/demos/wasm4/src/slasher.lo",
+                // "examples/self-hosted/0-cli.lo",
+            ];
+
+            for (const fileName of files) {
+                it(`inspects ${fileName}`, async () => {
+                    const inspect1 = await loSelfHosted(["inspect", fileName]);
+                    const inspect2 = await lo(["inspect", fileName]);
+
+                    assert.strictEqual(
+                        new TextDecoder().decode(inspect1),
+                        new TextDecoder().decode(inspect2),
+                    );
+                });
+            }
+        });
     });
 }
 

@@ -1118,7 +1118,21 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
                 let const_def = self.registry.constants.at!(symbol.col_index)
                 const_def.type_id = value_type_id
 
-                // TODO: port inspection
+                if self.reporter.in_inspection_mode {
+                    let message = String::new_in(self.reporter.inspection_arena, 32)
+                    do message.push_str(it) with (
+                        "inline let ",
+                        let_expr.name.repr,
+                        ": ",
+                        self.registry.fmt(self.get_type(value_type_id)),
+                    )
+
+                    self.reporter.print_inspection(InspectInfo {
+                        message: message,
+                        loc: let_expr.name.loc,
+                        linked_loc: null,
+                    })
+                }
 
                 continue
             }
@@ -1130,7 +1144,23 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
             let global = self.registry.globals.at!(symbol.col_index)
             global.type_id = value_type_id
 
-            // TODO: port inspection
+            if self.reporter.in_inspection_mode {
+                let global_name = let_expr.name.repr
+
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    "let ",
+                    global_name,
+                    ": ",
+                    self.registry.fmt(self.get_type(value_type_id)),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: let_expr.name.loc,
+                    linked_loc: null,
+                })
+            }
         }
 
         if match TopLevelExpr::Intrinsic(intrinsic) = expr {
@@ -3428,7 +3458,34 @@ fn Typer::type_fn_call(
         return_type_id: fn_info.type_.output,
     })
 
-    // TODO: port inspection
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 64)
+
+        message.push_str("fn ")
+        message.push_str(fn_name)
+        message.push_str("(")
+
+        for i in 0..fn_info.params.len {
+            let param = fn_info.params.at!(i)
+            if i != 0 {
+                message.push_str(", ")
+            }
+
+            message.push_str(param.param_name.repr)
+            message.push_str(": ")
+            message.push_str(self.registry.fmt(self.get_type(param.param_type_id)))
+        }
+
+        let return_type = self.registry.fmt(self.get_type(fn_info.type_.output))
+        message.push_str("): ")
+        message.push_str(return_type)
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: &fn_info.definition_loc,
+        })
+    }
 
     if all_good && !self.is_types_compatible(fn_info.type_.inputs, arg_types) {
         // TODO: port
@@ -3732,7 +3789,21 @@ fn Typer::get_value_info(
 
         let local_def = self.registry.locals.at!(symbol.col_index)
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.registry.get_type(local_def.local_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         return Ok(ValueInfo {
             kind: ValueKind::Local,
@@ -3744,7 +3815,21 @@ fn Typer::get_value_info(
     if symbol.kind == TySymbolKind::Global {
         let global = self.registry.globals.at!(symbol.col_index)
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(global.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         return Ok(ValueInfo {
             kind: ValueKind::Global,
@@ -3756,7 +3841,21 @@ fn Typer::get_value_info(
     if symbol.kind == TySymbolKind::Const {
         let const_def = self.registry.constants.at!(symbol.col_index)
 
-        // TODO: port inspection
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "inline let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(const_def.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
 
         return Ok(ValueInfo {
             kind: ValueKind::Const,
@@ -3901,12 +4000,19 @@ fn Typer::define_local(
     always_define: bool,
 ): bool {
     if self.reporter.in_inspection_mode {
-        // TODO: port:
-        // self.reporter.print_inspection(InspectInfo {
-        //     message: format!("let {}: {}", name, self.registry.fmt(self.get_type(type_id))),
-        //     loc: loc,
-        //     linked_loc: None,
-        // })
+        let message = String::new_in(self.reporter.inspection_arena, 32)
+        do message.push_str(it) with (
+            "let ",
+            *name,
+            ": ",
+            self.registry.fmt(self.get_type(type_id)),
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: null,
+        })
     }
 
     let defined = !(*name).equals("_") && self.define_symbol(ctx, *name, TySymbolKind::Local, loc)

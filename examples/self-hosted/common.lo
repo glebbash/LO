@@ -66,6 +66,7 @@ type Reporter = struct {
     registry: &Registry,
 
     in_inspection_mode: bool,
+    inspection_arena: &Arena,
 
     error_count: u32,
     warning_count: u32,
@@ -75,6 +76,7 @@ fn Reporter::new(registry: &Registry): &Reporter {
     return heap::new!(Reporter {
         registry: registry,
         in_inspection_mode: false,
+        inspection_arena: Arena::new(0),
         error_count: 0,
         warning_count: 0,
     })
@@ -82,6 +84,8 @@ fn Reporter::new(registry: &Registry): &Reporter {
 
 fn Reporter::begin_inspection(&self) {
     self.in_inspection_mode = true
+    self.inspection_arena.free()
+    self.inspection_arena = Arena::new(1024)
     stdout_enable_buffering()
     stdout_writeln("[")
 }
@@ -103,12 +107,12 @@ fn Reporter::error(&self, error: &Error) {
         let content = Reporter::json_str_escape(error.message).as_str()
 
         do stdout_write(it) with (
-            "{{ ",
+            "{ ",
             "\"type\": \"message\", ",
             "\"content\": \"", \\ content, \\ "\", ",
             "\"severity\": \"error\", ",
             "\"loc\": \"", \\ source_loc, \\ "\" ",
-            "}},",
+            "},\n",
         )
         return
     }
@@ -128,12 +132,12 @@ fn Reporter::warning(&self, error: &Error) {
         let content = Reporter::json_str_escape(error.message).as_str()
 
         do stdout_write(it) with (
-            "{{ ",
+            "{ ",
             "\"type\": \"message\", ",
             "\"content\": \"", \\ content, \\ "\", ",
             "\"severity\": \"warning\", ",
             "\"loc\": \"", \\ source_loc, \\ "\" ",
-            "}},",
+            "},\n",
         )
         return
     }
@@ -153,23 +157,23 @@ fn Reporter::print_inspection(&self, inspect_info: InspectInfo) {
         if inspect_info.linked_loc.module_id != 0 {
             let target_loc = Reporter::loc_to_tmp_str!(*inspect_info.linked_loc)
             do stdout_write(it) with (
-                "{{ ",
+                "{ ",
                 "\"type\": \"info\", ",
                 "\"link\": \"", \\ target_loc, \\ "\", ",
                 "\"hover\": \"", \\ message, \\ "\", ",
                 "\"loc\": \"", \\ source_loc, \\ "\" ",
-                "}},",
+                "},\n",
             )
             return
         }
     }
 
     do stdout_write(it) with (
-        "{{ ",
+        "{ ",
         "\"type\": \"info\", ",
         "\"hover\": \"", \\ message, \\ "\", ",
         "\"loc\": \"", \\ source_loc, \\ "\" ",
-        "}},",
+        "},\n",
     )
 }
 
@@ -183,11 +187,11 @@ fn Reporter::print_include_info(
         let file_path = self.registry.modules.get!(module_id).absolute_path.as_str()
 
         do stdout_write(it) with (
-            "{{ ",
+            "{ ",
             "\"type\": \"file\", ",
             "\"index\": ", \\ module_id.to_tmp_str!(), \\ ", ",
             "\"path\": \"", \\ file_path, \\ "\" ",
-            "}},",
+            "},\n",
         )
     }
 
@@ -195,11 +199,11 @@ fn Reporter::print_include_info(
         let source_loc = Reporter::loc_to_tmp_str!(loc)
 
         do stdout_write(it) with (
-            "{{ ",
+            "{ ",
             "\"type\": \"info\", ",
             "\"link\": \"", \\ module_id.to_tmp_str!(), \\ "/1:1-1:1\", ",
             "\"loc\": \"", \\ source_loc, \\ "\" ",
-            "}},",
+            "},\n",
         )
     }
 }

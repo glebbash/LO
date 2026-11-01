@@ -21,7 +21,6 @@ Context: porting `short-circuit.lo` and `add.lo` to the self-hosted compiler. Or
 6. **Tooling.**
     - A single `compile --diff-against-rust` command would replace the manual `.wat` diff loop.
     - `inspect` could list reachable `todo!()`s per sample, to show port progress.
-    - `Registry::fmt` is stubbed to `"<?>"`; porting it early makes type errors debuggable.
 7. **Error-message coverage.** ~115 error sites in `typer.rs` vs ~4 error samples. A corpus of mutated samples, compared Rust vs LO, would find missing or different messages cheaply.
 
 ## Claude Sonnet 5 (Claude Code, session of 2026-10-31)
