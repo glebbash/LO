@@ -357,6 +357,7 @@ type DoWithExpr = struct {
     body: CodeExpr,
     args: CodeExprList,
     with_loc: Loc,
+    bind_id: u32,
     loc: Loc,
 }
 

@@ -52,6 +52,38 @@ fn Type::equals(self, other): bool {
         }
     }
 
+    if match Type::Pointer(ptr) = self {
+        if match Type::Pointer(other_ptr) = other {
+            return ptr.pointee == other_ptr.pointee && ptr.is_sequence == other_ptr.is_sequence && ptr.is_nullable == other_ptr.is_nullable
+        }
+    }
+
+    if match Type::Struct(struct_) = self {
+        if match Type::Struct(other_struct) = other {
+            return struct_.struct_index == other_struct.struct_index
+        }
+    }
+
+    if match Type::Enum(enum_) = self {
+        if match Type::Enum(other_enum) = other {
+            return enum_.enum_index == other_enum.enum_index
+        }
+    }
+
+    if match Type::Seg(seg) = self {
+        if match Type::Seg(other_seg) = other {
+            return seg.item == other_seg.item
+        }
+    }
+
+    if match Type::Result(result) = self {
+        if match Type::Result(other_result) = other {
+            return result.ok == other_result.ok && result.err == other_result.err
+        }
+    }
+
+    // TODO: port Container
+
     return false
 }
 
@@ -345,7 +377,54 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
                 })
             }
 
-            // TODO: port TypeDefValue::Enum
+            if match TypeDefValue::Enum(enum_value) = type_def.value {
+                if !self.define_symbol(ctx, type_def.name.repr, TySymbolKind::Enum, type_def.name.loc) {
+                    continue
+                }
+
+                let variant_type_id = self.intern_type(Type::Void)
+                if enum_value.variant_type != null {
+                    let type_id_result = self.build_type(ctx, *enum_value.variant_type)
+                    if type_id_result.err as u32 != 0 {
+                        variant_type_id = self.intern_type(Type::Never)
+                        self.report_error(type_id_result.err)
+                    } else {
+                        variant_type_id = type_id_result.ok
+                    }
+                }
+
+                self.registry.enums.push!(EnumDef {
+                    ctx: ctx,
+                    enum_name: type_def.name.repr,
+                    variant_type_id: variant_type_id,
+                    variants: Vec::new!<EnumVariant>(), // placeholder
+                    variant_defs: enum_value.variants,
+                })
+
+                for variant_index in 0..enum_value.variants.len {
+                    let variant = enum_value.variants.get!(variant_index)
+
+                    let constructor_name_string = String::from_str(type_def.name.repr)
+                    constructor_name_string.push_str("::")
+                    constructor_name_string.push_str(variant.variant_name.repr)
+                    let constructor_name = self.alloc_str(constructor_name_string)
+
+                    let enum_index = self.registry.enums.len - 1
+
+                    let _ = self.define_symbol(
+                        ctx,
+                        constructor_name,
+                        TySymbolKind::EnumConstructor,
+                        variant.variant_name.loc,
+                    )
+
+                    self.registry.enum_ctors.push!(EnumConstructor {
+                        enum_index: enum_index,
+                        variant_index: variant_index,
+                        loc: variant.variant_name.loc,
+                    })
+                }
+            }
 
             if match TypeDefValue::Alias(type_expr) = type_def.value {
                 let _ = self.define_symbol(
@@ -669,7 +748,103 @@ fn Typer::resolve_type_size(&self, ctx: &TyContext, type_id: TypeId): bool {
 }
 
 fn Typer::resolve_enum_body(&self, enum_def: &EnumDef) {
-    // TODO: port
+    let next_variant_tag_value = 0
+    let using_implicit_tag_values = true
+
+    for variant_index in 0..enum_def.variant_defs.len {
+        let variant = enum_def.variant_defs.get!(variant_index)
+
+        let is_redefined = false
+        for &existing_variant in enum_def.variants.iter!() {
+            if existing_variant.variant_name.equals(variant.variant_name.repr) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot redefine enum variant '",
+                )
+                do message.push_str(it) with (
+                    variant.variant_name.repr,
+                    "', previously defined at ",
+                    existing_variant.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: variant.variant_name.loc,
+                }))
+                is_redefined = true
+                break
+            }
+        }
+        if is_redefined {
+            continue
+        }
+
+        let has_payload = false
+        let variant_type_id = 0
+        if variant.variant_type != null {
+            has_payload = true
+            let type_id_result = self.build_type(enum_def.ctx, *variant.variant_type)
+            if type_id_result.err as u32 != 0 {
+                self.report_error(type_id_result.err)
+                variant_type_id = self.intern_type(Type::Never)
+            } else {
+                variant_type_id = type_id_result.ok
+            }
+        } else {
+            has_payload = false
+            variant_type_id = enum_def.variant_type_id
+        }
+
+        let variant_tag_value = 0
+        if variant.variant_tag_value != null {
+            if using_implicit_tag_values && next_variant_tag_value > 0 {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Forbidden mix of implicit and explicit variant values",
+                    ),
+                    loc: variant.loc,
+                }))
+            }
+
+            variant_tag_value = (*variant.variant_tag_value).value as u32
+            using_implicit_tag_values = false
+        } else {
+            if !using_implicit_tag_values {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Forbidden mix of implicit and explicit variant values",
+                    ),
+                    loc: variant.loc,
+                }))
+            }
+
+            variant_tag_value = next_variant_tag_value
+            next_variant_tag_value += 1
+        }
+
+        if !self.is_type_compatible(self.get_type(enum_def.variant_type_id), self.get_type(variant_type_id)) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Enum variant is not compatible with ",
+            )
+            message.push_str(self.registry.fmt(self.get_type(enum_def.variant_type_id)))
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: variant.variant_name.loc,
+            }))
+        }
+
+        enum_def.variants.push!(EnumVariant {
+            variant_name: variant.variant_name.repr,
+            variant_type_id: variant_type_id,
+            variant_tag_value: variant_tag_value,
+            has_payload: has_payload,
+            loc: variant.variant_name.loc,
+        })
+    }
 }
 
 type StructFieldInfo = struct {
@@ -731,7 +906,65 @@ fn Typer::get_struct_field_info(
         }))
     }
 
-    // TODO: port Result/Enum special cases
+    if match Type::Result(result) = lhs_type {
+        if field_access.field_name.repr.equals("ok") {
+            return Ok(StructFieldInfo {
+                field_type_id: result.ok,
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        if field_access.field_name.repr.equals("err") {
+            let ok_layout = ref!(TypeLayout::new())
+            Typer::get_type_layout(registry, registry.get_type(result.ok), ok_layout)
+
+            return Ok(StructFieldInfo {
+                field_type_id: result.err,
+                field_index: ok_layout.primitives_count,
+                byte_offset: ok_layout.byte_size,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    if match Type::Enum(_) = lhs_type {
+        if field_access.field_name.repr.equals("tag") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::U32),
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
 
     match Type::Struct(struct_type) = lhs_type else {
         let message = String::from_str_in(registry.error_arena, "Cannot get field '")
@@ -2109,7 +2342,55 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     // TODO: port
 
     if match CodeExpr::FnCall(call) = expr {
-        // TODO: port enum constructor calls
+        let symbol = self.get_symbol(ctx, call.fn_name.repr)
+        if symbol != null && symbol.kind == TySymbolKind::EnumConstructor {
+            let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+            let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+            let variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+            // TODO: port inspection
+
+            for arg in call.args.items.iter!() {
+                self.report_if_err!(self.type_code_expr(ctx, arg))
+            }
+
+            if call.args.items.len != 1 {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Non-void enum constructors require exactly one argument",
+                    ),
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            let expr_type_id_ptr = self.load_type(ctx, call.args.items.get!(0))
+            if expr_type_id_ptr != null \
+                && !self.is_type_compatible(self.get_type(variant.variant_type_id), self.get_type(*expr_type_id_ptr))
+            {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid enum payload: ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(*expr_type_id_ptr)),
+                    ", expected: ",
+                    self.registry.fmt(self.get_type(variant.variant_type_id)),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            self.store_expr_info(ctx, call.id, self.registry.call_info.len)
+            self.registry.call_info.push!(CallInfo {
+                value: CallInfoValue::EnumCtor(enum_ctor.variant_index),
+                return_type_id: self.intern_type(Type::Enum(heap::new!(EnumType {
+                    enum_index: enum_ctor.enum_index,
+                }))),
+            })
+
+            return Ok()
+        }
 
         self.type_fn_call(
             ctx,
@@ -2213,6 +2494,9 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         // TODO: port
         if match IfCond::Expr(cond_expr) = if_expr.cond {
             self.report_if_err!(self.type_code_expr_and_load(ctx, *cond_expr))
+        }
+        if match IfCond::Match(match_header) = if_expr.cond {
+            self.report_if_err!(self.type_match_header(then_ctx, match_header))
         }
 
         let then_type = self.type_code_block(then_ctx, &if_expr.then_block, true)
@@ -2718,6 +3002,86 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         self.define_local_no_symbol(ctx, null, result.err, prop_error.err_bind_id)
 
         self.store_expr_info(ctx, prop_error.id, result.ok)
+
+        return Ok()
+    }
+
+    if match CodeExpr::Match(match_expr) = expr {
+        let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
+        let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true)
+        if !else_type.equals(Type::Never) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Match's else block must resolve to never, got other type",
+                ),
+                loc: match_expr.else_branch.loc,
+            }))
+        }
+
+        self.report_if_err!(self.type_match_header(ctx, &match_expr.header))
+
+        self.store_type(ctx, match_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::DoWith(do_with) = expr {
+        self.store_type(ctx, do_with.id, Type::Void)
+
+        if do_with.args.items.len == 0 {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "do-with expressions must have at least one argument",
+                ),
+                loc: do_with.with_loc,
+            }))
+            return Ok()
+        }
+
+        for arg in do_with.args.items.iter!() {
+            self.report_if_err!(self.type_code_expr(ctx, arg))
+        }
+
+        let it_type_id_ptr = self.load_type(ctx, do_with.args.items.get!(0))
+        if it_type_id_ptr == null {
+            return Ok()
+        }
+        let it_type_id = *it_type_id_ptr
+
+        let ctx = self.child_ctx(ctx, ScopeKind::InlineFn)
+        let _ = self.define_local(
+            ctx,
+            heap::new!("it"),
+            it_type_id,
+            do_with.with_loc,
+            do_with.bind_id,
+            true,
+        )
+
+        for arg in do_with.args.items.iter!().skip!(1) {
+            let arg_type_id_ptr = self.load_type(ctx, arg)
+            if arg_type_id_ptr != null && *arg_type_id_ptr != it_type_id {
+                let arg_type_id = *arg_type_id_ptr
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "do-with argument type mismatch. expected: ",
+                )
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(it_type_id)),
+                    ", got: ",
+                    self.registry.fmt(self.get_type(arg_type_id)),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: arg.loc(),
+                }))
+            }
+        }
+
+        self.report_if_err!(self.type_code_expr(ctx, do_with.body))
 
         return Ok()
     }
@@ -3535,6 +3899,14 @@ fn Typer::get_type_id_or_err(
         }))))
     }
 
+    if symbol.kind == TySymbolKind::Enum {
+        // TODO: port inspection
+
+        return Ok(self.intern_type(Type::Enum(heap::new!(EnumType {
+            enum_index: symbol.col_index,
+        }))))
+    }
+
     if symbol.kind == TySymbolKind::TypeAlias {
         let type_alias = self.type_aliases.get!(symbol.col_index)
 
@@ -3844,7 +4216,15 @@ fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout)
         return
     }
 
-    // TODO: port Enum
+    if match Type::Enum(enum_type) = type_ {
+        let enum_def = registry.enums.at!(enum_type.enum_index)
+
+        Typer::get_type_layout(registry, Type::U32, layout)
+        Typer::get_type_layout(registry, registry.get_type(enum_def.variant_type_id), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
 
     if match Type::Result(result) = type_ {
         Typer::get_type_layout(registry, registry.get_type(result.ok), layout)
@@ -4015,6 +4395,72 @@ fn Typer::is_wide_int_tag(registry: &Registry, tag_type: Type, loc: Loc): Result
     }
 
     return Ok(wide_result.ok)
+}
+
+fn Typer::type_match_header(&self, ctx: &TyContext, match_header: &MatchHeader): Result(void, &Error) {
+    let symbol = self.get_symbol(ctx, match_header.variant_name.repr)
+    if symbol == null {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Unknown symbol"),
+            loc: match_header.variant_name.loc,
+        }))
+    }
+
+    if symbol.kind != TySymbolKind::EnumConstructor {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Not an enum variant"),
+            loc: match_header.variant_name.loc,
+        }))
+    }
+
+    let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+    let enum_variant = self.registry.enums.at!(enum_ctor.enum_index).variants.at!(enum_ctor.variant_index)
+
+    let expr_to_match_type_id_result = self.type_code_expr_and_load(ctx, match_header.expr_to_match)
+    if expr_to_match_type_id_result.err as u32 != 0 {
+        self.report_error(expr_to_match_type_id_result.err)
+    } else {
+        let expr_to_match_type = self.get_type(expr_to_match_type_id_result.ok)
+        let expected_expr_to_match_type = Type::Enum(heap::new!(EnumType {
+            enum_index: enum_ctor.enum_index,
+        }))
+        if !self.is_type_compatible(expected_expr_to_match_type, expr_to_match_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Unexpected type to match, expected: ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(expected_expr_to_match_type),
+                ", got: ",
+                self.registry.fmt(expr_to_match_type),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: match_header.expr_to_match.loc(),
+            }))
+        }
+    }
+
+    // TODO: port inspection
+
+    let _ = self.define_local(
+        ctx,
+        &match_header.variant_bind.repr,
+        enum_variant.variant_type_id,
+        match_header.variant_bind.loc,
+        match_header.variant_bind.id,
+        true,
+    )
+
+    self.store_expr_info(ctx, match_header.variant_name.id, self.registry.value_info.len)
+    self.registry.value_info.push!(ValueInfo {
+        kind: ValueKind::EnumConstructor,
+        col_index: symbol.col_index,
+        type_id: enum_variant.variant_type_id,
+    })
+
+    return Ok()
 }
 
 fn Typer::assert_catchable_type(&self, expr_type: Type, loc: Loc): Result(&ResultType, &Error) {

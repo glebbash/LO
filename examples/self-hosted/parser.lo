@@ -870,6 +870,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
             body: body,
             args: args,
             with_loc: with_.loc,
+            bind_id: self.next_expr_id(),
             loc: loc,
         })))
     }

@@ -716,6 +716,15 @@ fn Codegen::codegen(
         let expr_info = self.get_expr_info(ctx, call.id, call.loc)
         let call_info = self.registry.call_info.at!(expr_info)
 
+        if match CallInfoValue::EnumCtor(variant_index) = call_info.value {
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: variant_index as i32 }),
+            ))
+
+            self.codegen(ctx, instrs, call.args.items.get!(0))
+            return
+        }
+
         if match CallInfoValue::FnCall(fn_index) = call_info.value {
             self.codegen_fn_call(ctx, instrs, fn_index, null, call.args.items)
             return
@@ -822,6 +831,20 @@ fn Codegen::codegen(
 
             // `if` condition runs outside of then_branch's scope
             self.enter_scope(ctx, ScopeKind::Block)
+        }
+        if match IfCond::Match(match_header) = if_expr.cond {
+            // `if match` condition runs inside of then_branch's scope
+            self.enter_scope(ctx, ScopeKind::Block)
+
+            let enum_variant_tag_value = self.codegen_match_header(ctx, instrs, match_header)
+
+            // pop enum's variant from the stack and compare it to the expected variant
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: enum_variant_tag_value }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_EQ }),
+            ))
         }
 
         // TODO: port
@@ -1138,13 +1161,73 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::Match(match_expr) = expr {
+        let enum_variant_tag_value = self.codegen_match_header(ctx, instrs, &match_expr.header)
+
+        // pop enum's variant from the stack and compare it to the expected variant
+        // if it's not equal then `else_branch`` must run
+        instrs.push!(WasmInstr::I32Const(
+            self.wasm_module.arena.new!(WasmInstrI32Const { value: enum_variant_tag_value }),
+        ))
+        instrs.push!(WasmInstr::BinaryOp(
+            self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_NE }),
+        ))
+
+        instrs.push!(WasmInstr::BlockStart(
+            self.wasm_module.arena.new!(WasmInstrBlockStart {
+                block_kind: WasmBlockKind::If,
+                block_type: WasmBlockType::NoOut,
+            }),
+        ))
+
+        self.enter_scope(ctx, ScopeKind::Block)
+        self.codegen_code_block(ctx, instrs, &match_expr.else_branch)
+        self.exit_scope(ctx)
+        instrs.push!(WasmInstr::BlockEnd)
+
+        return
+    }
+
+    if match CodeExpr::DoWith(do_with) = expr {
+        let arg_type = self.get_expr_type(ctx, do_with.args.items.get!(0))
+        let arg_local = self.get_local_info(ctx, do_with.bind_id, do_with.with_loc)
+
+        for arg in do_with.args.items.iter!() {
+            self.enter_scope(ctx, ScopeKind::InlineFn)
+
+            self.codegen(ctx, instrs, arg)
+
+            self.codegen_local_set(instrs, arg_type, arg_local.local_index)
+            self.codegen(ctx, instrs, do_with.body)
+
+            self.exit_scope(ctx)
+        }
+
+        return
+    }
+
     // TODO: port
 
     todo!()
 }
 
-fn Codegen::codegen_match_header(&self) {
-    todo!()
+fn Codegen::codegen_match_header(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+    header: &MatchHeader,
+): i32 {
+    let local = self.get_local_info(ctx, header.variant_bind.id, header.variant_bind.loc)
+    self.codegen(ctx, instrs, header.expr_to_match)
+    self.codegen_local_set(instrs, self.get_type(local.var_type_id), local.local_index)
+
+    let expr_info = self.get_expr_info(ctx, header.variant_name.id, header.variant_name.loc)
+    let value_info = self.registry.value_info.at!(expr_info)
+    let enum_ctor = self.registry.enum_ctors.at!(value_info.col_index)
+    let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+    let enum_variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+    return enum_variant.variant_tag_value as i32
 }
 
 fn Codegen::codegen_fn_call(
@@ -1708,7 +1791,13 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
-    // TODO: port Enum
+    if match Type::Enum(enum_type) = pointee_type {
+        let enum_def = self.registry.enums.at!(enum_type.enum_index)
+
+        self.codegen_load_or_store(instrs, self.get_type(enum_def.variant_type_id), offset + 4, is_store)
+        self.codegen_load_or_store(instrs, Type::U32, offset, is_store)
+        return
+    }
 
     if match Type::U64(_) = pointee_type {
         if is_store {
@@ -1930,7 +2019,13 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
-    // TODO: port Enum
+    if match Type::Enum(enum_type) = type_ {
+        let enum_def = self.registry.enums.at!(enum_type.enum_index)
+
+        self.lower_type(Type::U32, wasm_types)
+        self.lower_type(self.get_type(enum_def.variant_type_id), wasm_types)
+        return
+    }
 
     if match Type::Result(result) = type_ {
         self.lower_type(self.get_type(result.ok), wasm_types)
@@ -2053,7 +2148,31 @@ fn Codegen::push_wasm_dbg_name_section_locals(
         return local_index
     }
 
-    // TODO: port Enum
+    if match Type::Enum(enum_type) = local_type {
+        let tag_local_name = String::new_in(self.registry.error_arena, 16)
+        do tag_local_name.push_str(it) with (local_name, "#tag")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            Type::U32,
+            tag_local_name.as_str(),
+        )
+
+        let enum_def = self.registry.enums.at!(enum_type.enum_index)
+
+        let payload_local_name = String::new_in(self.registry.error_arena, 16)
+        do payload_local_name.push_str(it) with (local_name, "#payload")
+
+        local_index = self.push_wasm_dbg_name_section_locals(
+            output,
+            local_index,
+            self.get_type(enum_def.variant_type_id),
+            payload_local_name.as_str(),
+        )
+
+        return local_index
+    }
 
     if match Type::Result(result) = local_type {
         let ok_local_name = String::new_in(self.registry.error_arena, 16)
