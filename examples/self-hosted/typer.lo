@@ -1940,6 +1940,64 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             return Ok()
         }
 
+        if call.fn_name.repr.equals("inline_fn_call_loc") {
+            let inline_fn_call_loc = null as &?Loc
+
+            let current_ctx = ctx
+            loop {
+                if current_ctx.kind == ScopeKind::InlineFn {
+                    inline_fn_call_loc = current_ctx.inline_fn_call_loc
+                    break
+                }
+
+                if current_ctx.parent != null {
+                    current_ctx = current_ctx.parent
+                } else {
+                    break
+                }
+            }
+
+            if inline_fn_call_loc == null {
+                let message = String::from_str_in(self.registry.error_arena, "Forbidden use of `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "()` outside of inline fn",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            if call.type_args.len != 0 || call.args.items.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): &*u8`",
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            let bytes_info = self.process_const_string(
+                (*inline_fn_call_loc).to_string_in(Alloc::HEAP, self.registry).as_str(),
+            )
+
+            self.store_expr_info(ctx, call.extra_id, self.registry.stored_bytes.len)
+            self.registry.stored_bytes.push!(StoredExprBytes {
+                info: bytes_info,
+                expr_type_id: *self.registry.str_literal_type_id,
+            })
+
+            self.store_expr_info(ctx, call.id, *self.registry.str_literal_type_id)
+
+            return Ok()
+        }
+
         if call.fn_name.repr.equals("seg") {
             if call.args.items.len == 2 {
                 let ptr_type_id = self.type_code_expr_and_load(ctx, call.args.items.get!(0))?
@@ -2522,6 +2580,36 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }))
         }
 
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            let var = self.get_variable_kind(ctx, prefix_op.expr) catch _ {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            if var != VariableKind::ReadWriteStored {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Pointer(heap::new!(PointerType {
+                pointee: expr_type_id,
+                is_sequence: false,
+                is_nullable: false,
+            })))
+
+            return Ok()
+        }
+
         // TODO: port
         todo!()
     }
@@ -2619,6 +2707,18 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         }
 
         self.store_expr_info(ctx, catch_expr.id, result.ok)
+        return Ok()
+    }
+
+    if match CodeExpr::PropagateError(prop_error) = expr {
+        let expr_type_id = self.type_code_expr_and_load(ctx, prop_error.expr)?
+        let result = self.assert_catchable_type(self.get_type(expr_type_id), prop_error.loc)?
+
+        self.define_local_no_symbol(ctx, null, result.ok, prop_error.ok_bind_id)
+        self.define_local_no_symbol(ctx, null, result.err, prop_error.err_bind_id)
+
+        self.store_expr_info(ctx, prop_error.id, result.ok)
+
         return Ok()
     }
 

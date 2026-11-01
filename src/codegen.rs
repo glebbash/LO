@@ -1160,21 +1160,20 @@ impl Codegen {
                 loc: _,
             }) => {
                 // find first non-inline-fn scope
-                let mut scope_to_defer = self.module_info[ctx.module_id]
-                    .scope_stack
-                    .relax_mut()
-                    .last_mut()
-                    .unwrap();
-                for scope in self.module_info[ctx.module_id].scope_stack.iter_mut().rev() {
+                let scope_stack = &self.module_info[ctx.module_id].scope_stack;
+                let mut scope_to_defer_index = scope_stack.len() - 1;
+                for (index, scope) in scope_stack.iter().enumerate().rev() {
                     if scope.kind != ScopeKind::InlineFn {
-                        scope_to_defer = scope.relax_mut();
+                        scope_to_defer_index = index;
                         break;
                     }
                 }
 
                 let mut expr_instrs = Vec::new();
                 self.codegen(ctx, &mut expr_instrs, expr);
-                scope_to_defer.deferred_exprs.push(expr_instrs);
+                self.module_info[ctx.module_id].scope_stack[scope_to_defer_index]
+                    .deferred_exprs
+                    .push(expr_instrs);
             }
             CodeExpr::Catch(catch) => {
                 self.codegen_catch(

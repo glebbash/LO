@@ -1046,13 +1046,13 @@ async function commandTest() {
                 "examples/lib/std.lo",
                 "examples/test/vec.test.lo",
                 "examples/test/demos/hello-world.lo",
-                // "examples/test/demos/echo.lo",
+                "examples/test/demos/echo.lo",
                 "examples/test/args.test.lo",
-                // "examples/test/demos/cat.lo",
-                // "examples/test/tracing.lo",
-                // "examples/test/struct-in-struct.lo",
+                "examples/test/demos/cat.lo",
+                "examples/test/tracing.lo",
+                "examples/test/struct-in-struct.lo",
                 "examples/test/heap-alloc.lo",
-                // "examples/test/defer.lo",
+                "examples/test/defer.lo",
                 "examples/test/errors.lo",
                 // "examples/test/do-with.lo",
                 // "examples/test/enums.lo",
@@ -1073,6 +1073,7 @@ async function commandTest() {
                 // "examples/test/demos/wasm4/src/blink.lo",
                 // "examples/test/demos/wasm4/src/dark-maze.lo",
                 // "examples/test/demos/wasm4/src/slasher.lo",
+                // "examples/self-hosted/0-cli.lo",
             ];
 
             for (const fileName of files) {

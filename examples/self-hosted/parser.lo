@@ -288,6 +288,7 @@ fn Parser::parse_top_level_expr(&self): Result(TopLevelExpr, &Error) {
 
         return Ok(TopLevelExpr::Intrinsic(self.ast_arena.new!(InlineFnCallExpr {
             id: self.next_expr_id(),
+            extra_id: self.next_expr_id(),
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -884,6 +885,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         return Ok(CodeExpr::IntrinsicCall(self.ast_arena.new!(InlineFnCallExpr {
             id: self.next_expr_id(),
+            extra_id: self.next_expr_id(),
             fn_name: fn_name,
             type_args: type_args,
             args: args,
@@ -1075,6 +1077,7 @@ fn Parser::parse_code_expr_primary(&self): Result(CodeExpr, &Error) {
 
         return Ok(CodeExpr::InlineFnCall(self.ast_arena.new!(InlineFnCallExpr {
             id: self.next_expr_id(),
+            extra_id: self.next_expr_id(),
             fn_name: *fn_name,
             type_args: type_args,
             args: args,

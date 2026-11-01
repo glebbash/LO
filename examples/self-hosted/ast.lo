@@ -480,6 +480,7 @@ type MethodCallExpr = struct {
 
 type InlineFnCallExpr = struct {
     id: u32,
+    extra_id: u32, // NOTE: used for `inline_fn_call_loc` only
     fn_name: IdentExpr,
     type_args: &Vec(TypeExpr),
     args: CodeExprList,

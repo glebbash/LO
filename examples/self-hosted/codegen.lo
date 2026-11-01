@@ -599,6 +599,23 @@ fn Codegen::codegen(
             return
         }
 
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            let var = self.var_from_expr(ctx, prefix_op.expr).unwrap!()
+            match VarInfo::Stored(stored) = var else {
+                @unreachable()
+            }
+
+            instrs.push_all!(stored.address_instrs.iter!())
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored.offset as i32 }),
+            ))
+            instrs.push!(WasmInstr::BinaryOp(
+                self.wasm_module.arena.new!(WasmInstrBinaryOp { kind: WasmBinaryOpKind::I32_ADD }),
+            ))
+
+            return
+        }
+
         if prefix_op.op_tag == PrefixOpTag::Positive {
             self.codegen(ctx, instrs, prefix_op.expr)
             return
@@ -777,6 +794,20 @@ fn Codegen::codegen(
             return
         }
 
+        if call.fn_name.repr.equals("inline_fn_call_loc") {
+            let expr_info = self.get_expr_info(ctx, call.extra_id, call.loc)
+            let stored_bytes = self.registry.stored_bytes.at!(expr_info)
+
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.ptr as i32 }),
+            ))
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
+            ))
+
+            return
+        }
+
         // TODO: port
 
         let message = String::new_in(self.registry.error_arena, 16)
@@ -790,7 +821,7 @@ fn Codegen::codegen(
             self.codegen(ctx, instrs, *cond_expr)
 
             // `if` condition runs outside of then_branch's scope
-            // TODO: port
+            self.enter_scope(ctx, ScopeKind::Block)
         }
 
         // TODO: port
@@ -803,16 +834,19 @@ fn Codegen::codegen(
         ))
 
         self.codegen_code_block(ctx, instrs, &if_expr.then_block)
-
-        // TODO: port
+        self.exit_scope(ctx)
 
         if match ElseBlock::Else(else_block) = if_expr.else_block {
             instrs.push!(WasmInstr::Else)
+            self.enter_scope(ctx, ScopeKind::Block)
             self.codegen_code_block(ctx, instrs, else_block)
+            self.exit_scope(ctx)
         }
         if match ElseBlock::ElseIf(code_expr) = if_expr.else_block {
             instrs.push!(WasmInstr::Else)
+            self.enter_scope(ctx, ScopeKind::Block)
             self.codegen(ctx, instrs, *code_expr)
+            self.exit_scope(ctx)
         }
 
         instrs.push!(WasmInstr::BlockEnd)
@@ -1064,18 +1098,18 @@ fn Codegen::codegen(
     if match CodeExpr::Defer(defer_expr) = expr {
         // find first non-inline-fn scope
         let scope_stack = self.module_info.at!(ctx.module_id).scope_stack
-        let scope_to_defer = scope_stack.at!(scope_stack.len - 1)
+        let scope_to_defer_index = scope_stack.len - 1
         for i in 0..scope_stack.len {
             let scope = scope_stack.at!(scope_stack.len - 1 - i)
             if scope.kind != ScopeKind::InlineFn {
-                scope_to_defer = scope
+                scope_to_defer_index = scope_stack.len - 1 - i
                 break
             }
         }
 
         let expr_instrs = Vec::new!<WasmInstr>()
         self.codegen(ctx, expr_instrs, defer_expr.expr)
-        scope_to_defer.deferred_exprs.push!(expr_instrs)
+        self.module_info.at!(ctx.module_id).scope_stack.at!(scope_to_defer_index).deferred_exprs.push!(expr_instrs)
 
         return
     }
@@ -1088,6 +1122,18 @@ fn Codegen::codegen(
             catch_expr.ok_bind_id,
             catch_expr.error_bind.id,
             ref!(catch_expr.catch_body),
+        )
+        return
+    }
+
+    if match CodeExpr::PropagateError(prop_error) = expr {
+        self.codegen_catch(
+            ctx,
+            instrs,
+            prop_error.expr,
+            prop_error.ok_bind_id,
+            prop_error.err_bind_id,
+            null,
         )
         return
     }
@@ -1183,8 +1229,16 @@ fn Codegen::codegen_catch(
     if catch_body != null {
         self.codegen_code_block(ctx, instrs, catch_body)
     } else {
-        // TODO: port
-        todo!()
+        // return default ok_type of function's result and caught error
+        let fn_def = self.registry.functions.at!(*ctx.fn_index)
+        match Type::Result(fn_result) = self.get_type(fn_def.type_.output) else {
+            @unreachable()
+        }
+        self.codegen_default_value(ctx, instrs, self.get_type(fn_result.ok))
+        self.codegen_local_get(instrs, self.get_type(err_local.var_type_id), err_local.local_index)
+
+        self.emit_deferred_for_return(ctx, instrs)
+        instrs.push!(WasmInstr::Return)
     }
 
     instrs.push!(WasmInstr::Else)
