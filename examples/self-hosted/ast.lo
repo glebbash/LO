@@ -176,7 +176,7 @@ type TypeExprPointer = struct {
 
 type TypeExprContainer = struct {
     id: u32,
-    container: TypeExpr,
+    container: TypeExpr, // TODO!!!!: change this to ident expr
     items: &Vec(TypeExpr),
     loc: Loc,
 }

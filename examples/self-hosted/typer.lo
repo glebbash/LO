@@ -4409,6 +4409,7 @@ fn Typer::is_types_compatible(&self, slots: &Vec(TypeId), values: &Vec(TypeId)):
 }
 
 fn Typer::is_type_compatible(&self, slot: Type, value: Type): bool {
+    // TODO: allow this for self arguments only
     // TODO: port
     return true
 }
@@ -4614,6 +4615,7 @@ fn Typer::count_primitive_components(registry: &Registry, type_: Type): u32 {
     return layout.primitives_count
 }
 
+// TODO: look into proper alignment rules
 fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout) {
     if match Type::Never(_) = type_ {
         return
