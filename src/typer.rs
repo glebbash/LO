@@ -1632,6 +1632,7 @@ impl Typer {
                             ),
                             loc: item_expr.loc(),
                         });
+                        continue;
                     }
 
                     self.report_if_err(

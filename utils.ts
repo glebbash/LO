@@ -1031,8 +1031,6 @@ async function commandTest() {
                     (err as Error).message,
                     m`
                     ERROR: examples/test/compile-errors/mismatch-array-item.lo:3:22 - Unexpected array element type: bool, expected: u32
-                    panicked at src/typer.rs:4319:38:
-                    not yet implemented
 
                     `,
                 );
