@@ -1,0 +1,4 @@
+fn main() {
+    // error
+    if 1 {}
+}

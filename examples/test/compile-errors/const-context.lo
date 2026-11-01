@@ -1,0 +1,11 @@
+fn compute(): u32 {
+    return 1
+}
+
+// error
+let a = compute()
+
+// error
+let b = @memory_size()
+
+fn main() {}

@@ -1,0 +1,10 @@
+fn get(): u32 {
+    return 1
+}
+
+fn main() {
+    if true {
+        // error
+        get()
+    }
+}

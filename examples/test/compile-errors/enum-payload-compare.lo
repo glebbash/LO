@@ -1,0 +1,12 @@
+type Shape = enum (u32) {
+    Circle(u32),
+    Square(u32),
+}
+
+fn main() {
+    let a = Shape::Circle(1)
+    let b = Shape::Square(1)
+
+    // error
+    let _ = a == b
+}

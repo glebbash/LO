@@ -1,0 +1,8 @@
+fn get(): u32 {
+    // error
+    return true
+}
+
+fn main() {
+    let _ = get()
+}

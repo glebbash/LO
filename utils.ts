@@ -1080,6 +1080,9 @@ async function commandTest() {
             "examples/test/demos/wasm4/src/dark-maze.lo",
             "examples/test/demos/wasm4/src/slasher.lo",
             "examples/test/kitchen-sink.lo",
+            // "examples/test/wide-for-range.lo",
+            // "examples/test/const-data.lo",
+            // "examples/test/include-alias.lo",
             "examples/self-hosted/0-cli.lo",
         ];
 
@@ -1090,6 +1093,64 @@ async function commandTest() {
                     const compiled2 = await lo(["compile", fileName]);
 
                     assert.deepStrictEqual(compiled1, compiled2);
+                });
+            }
+        });
+
+        describe("compiler errors match initial", () => {
+            const outcome = async (
+                compiler: typeof lo,
+                fileName: string,
+            ): Promise<string> => {
+                const stderr = new WASI.VirtualFD();
+                try {
+                    const output = await compiler(["compile", fileName], {
+                        stderr,
+                    });
+                    const warnings = stderr.flushAndReadUtf8();
+                    return `ok: ${Buffer.from(output).toString("hex")}\n${warnings}`;
+                } catch (err) {
+                    return `error: ${(err as Error).message}`;
+                }
+            };
+
+            const files = [
+                "out-of-order-defs",
+                // "const-context",
+                // "enum-payload-compare",
+                // "fault-tolerance",
+                // "forbid-memory",
+                // "include-redefinition",
+                // "incompatible-operator",
+                // "infer-arity",
+                // "infer-not-named",
+                // "inline-fn-args",
+                // "inline-fn-arity",
+                // "inline-fn-type-args",
+                // "invalid-assign-target",
+                // "invalid-condition-type",
+                // "malformed-struct-literal",
+                // "mismatch-array-item",
+                // "mismatch-assign",
+                // "mismatch-enum-payload",
+                // "mismatch-fn-args",
+                // "mismatch-result-literal",
+                // "mismatch-return",
+                // "mismatch-struct-field",
+                // "missing-return",
+                // "non-void-expression",
+                // "redefine-global",
+                // "unreachable-args",
+                // "unreachable-expression",
+            ];
+
+            for (const file of files) {
+                const fileName = `examples/test/compile-errors/${file}.lo`;
+                it(`reports the same for ${fileName}`, async () => {
+                    assert.strictEqual(
+                        await outcome(loSelfHosted, fileName),
+                        await outcome(lo, fileName),
+                    );
                 });
             }
         });

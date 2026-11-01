@@ -1,0 +1,14 @@
+fn parse(): Result(u32, bool) {
+    // error
+    return Ok(true)
+}
+
+fn fail(): Result(u32, bool) {
+    // error
+    return Err(1)
+}
+
+fn main() {
+    let _ = parse()
+    let _ = fail()
+}

@@ -1,0 +1,8 @@
+inline fn double!(a: u32): u32 {
+    a + a
+}
+
+fn main() {
+    // error
+    let _ = double!(1, 2)
+}

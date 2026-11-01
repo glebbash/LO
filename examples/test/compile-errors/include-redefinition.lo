@@ -1,0 +1,8 @@
+@include("./lib/point.lo")
+
+// error
+type Point = struct {
+    z: u32,
+}
+
+fn main() {}

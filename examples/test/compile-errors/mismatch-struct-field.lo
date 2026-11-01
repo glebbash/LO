@@ -1,0 +1,9 @@
+type Point = struct {
+    x: u32,
+    y: u32,
+}
+
+fn main() {
+    // error
+    let _ = Point { x: 1, y: true }
+}

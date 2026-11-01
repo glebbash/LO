@@ -1,0 +1,8 @@
+inline fn first!(a: infer(T, T)): T {
+    a
+}
+
+fn main() {
+    // error
+    let _ = first!(1)
+}
