@@ -3117,8 +3117,25 @@ fn Typer::get_compound_assignment_base_op(&self, op_tag: InfixOpTag): Result(Inf
     if op_tag == InfixOpTag::MulAssign {
         return Ok(InfixOpTag::Mul)
     }
+    if op_tag == InfixOpTag::DivAssign {
+        return Ok(InfixOpTag::Div)
+    }
+    if op_tag == InfixOpTag::ModAssign {
+        return Ok(InfixOpTag::Mod)
+    }
+    if op_tag == InfixOpTag::BitAndAssign {
+        return Ok(InfixOpTag::BitAnd)
+    }
+    if op_tag == InfixOpTag::BitOrAssign {
+        return Ok(InfixOpTag::BitOr)
+    }
+    if op_tag == InfixOpTag::ShiftLeftAssign {
+        return Ok(InfixOpTag::ShiftLeft)
+    }
+    if op_tag == InfixOpTag::ShiftRightAssign {
+        return Ok(InfixOpTag::ShiftRight)
+    }
 
-    // TODO: port other variants
     return Err(VoidError::VALUE)
 }
 
@@ -3232,6 +3249,9 @@ fn Typer::get_binary_op_kind(
         }
         if op_tag == InfixOpTag::NotEqual {
             return Ok(WasmBinaryOpKind::I64_NE)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::I64_MUL)
         }
         if op_tag == InfixOpTag::Div {
             if signed {
