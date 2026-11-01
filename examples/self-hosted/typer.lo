@@ -3263,6 +3263,27 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         return Ok()
     }
 
+    if match CodeExpr::Pipe(pipe) = expr {
+        self.report_if_err!(self.type_code_expr(ctx, pipe.lhs))
+
+        let ctx = self.child_ctx(ctx, ScopeKind::InlineFn)
+        let it_type_id = self.load_type(ctx, pipe.lhs)
+        if it_type_id != null {
+            let _ = self.define_local(ctx, heap::new!("it"), *it_type_id, pipe.op_loc, pipe.bind_id, true)
+        }
+
+        self.report_if_err!(self.type_code_expr(ctx, pipe.rhs))
+
+        let type_id = self.load_type(ctx, pipe.rhs)
+        if type_id != null {
+            self.store_expr_info(ctx, pipe.id, *type_id)
+        } else {
+            self.store_type(ctx, pipe.id, Type::Never)
+        }
+
+        return Ok()
+    }
+
     // TODO: port
 
     todo!()
@@ -3499,6 +3520,74 @@ fn Typer::get_binary_op_kind(
             }
             return Ok(WasmBinaryOpKind::I64_SHR_U)
         }
+    }
+
+    if wasm_op_type == WasmType::F32 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::F32_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::F32_NE)
+        }
+        if op_tag == InfixOpTag::Less {
+            return Ok(WasmBinaryOpKind::F32_LT)
+        }
+        if op_tag == InfixOpTag::Greater {
+            return Ok(WasmBinaryOpKind::F32_GT)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            return Ok(WasmBinaryOpKind::F32_LE)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            return Ok(WasmBinaryOpKind::F32_GE)
+        }
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::F32_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::F32_SUB)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::F32_MUL)
+        }
+        if op_tag == InfixOpTag::Div {
+            return Ok(WasmBinaryOpKind::F32_DIV)
+        }
+        // TODO: port
+    }
+
+    if wasm_op_type == WasmType::F64 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::F64_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::F64_NE)
+        }
+        if op_tag == InfixOpTag::Less {
+            return Ok(WasmBinaryOpKind::F64_LT)
+        }
+        if op_tag == InfixOpTag::Greater {
+            return Ok(WasmBinaryOpKind::F64_GT)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            return Ok(WasmBinaryOpKind::F64_LE)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            return Ok(WasmBinaryOpKind::F64_GE)
+        }
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::F64_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::F64_SUB)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::F64_MUL)
+        }
+        if op_tag == InfixOpTag::Div {
+            return Ok(WasmBinaryOpKind::F64_DIV)
+        }
+        // TODO: port
     }
 
     // TODO: port

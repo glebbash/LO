@@ -1224,6 +1224,15 @@ fn Codegen::codegen(
         return
     }
 
+    if match CodeExpr::Pipe(pipe) = expr {
+        self.codegen(ctx, instrs, pipe.lhs)
+
+        let lhs_var = self.get_local_info(ctx, pipe.bind_id, pipe.op_loc)
+        self.codegen_local_set(instrs, self.get_type(lhs_var.var_type_id), lhs_var.local_index)
+        self.codegen(ctx, instrs, pipe.rhs)
+        return
+    }
+
     // TODO: port
 
     todo!()
@@ -2328,6 +2337,22 @@ fn Codegen::push_wasm_dbg_name_section_locals(
     }
 
     if match Type::I64(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::F32(_) = local_type {
+        output.push!(WasmLocalInfo {
+            local_index: local_index,
+            local_name: String::from_str(local_name),
+        })
+        return local_index + 1
+    }
+
+    if match Type::F64(_) = local_type {
         output.push!(WasmLocalInfo {
             local_index: local_index,
             local_name: String::from_str(local_name),

@@ -959,6 +959,16 @@ async function commandTest() {
         });
     });
 
+    it("compiles kitchen-sink.lo", async () => {
+        const program = await compile("./examples/test/kitchen-sink.lo");
+        const exports = await loadWasm(program as Uint8Array<ArrayBuffer>);
+
+        assert.strictEqual(exports.main(), 0);
+        assert.strictEqual(exports.lerp(0, 10, 0.5), 5);
+        assert.strictEqual(exports.is_freezing(-3), 1);
+        assert.strictEqual(exports.is_freezing(3), 0);
+    });
+
     describe("formatter", async () => {
         if (process.argv.includes("--skip-fmt")) {
             return;
@@ -1072,6 +1082,7 @@ async function commandTest() {
             "examples/test/demos/wasm4/src/blink.lo",
             "examples/test/demos/wasm4/src/dark-maze.lo",
             "examples/test/demos/wasm4/src/slasher.lo",
+            "examples/test/kitchen-sink.lo",
             "examples/self-hosted/0-cli.lo",
         ];
 
