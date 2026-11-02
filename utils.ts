@@ -1512,6 +1512,36 @@ async function commandTest() {
             "examples/test/include-alias.lo",
         ];
 
+        const TESTED_ERROR_SAMPLES = [
+            "out-of-order-defs",
+            "const-context",
+            "enum-payload-compare",
+            "fault-tolerance",
+            "forbid-memory",
+            "include-redefinition",
+            "incompatible-operator",
+            "infer-arity",
+            "infer-not-named",
+            "inline-fn-args",
+            "inline-fn-arity",
+            "inline-fn-type-args",
+            "invalid-assign-target",
+            "invalid-condition-type",
+            "malformed-struct-literal",
+            "mismatch-array-item",
+            "mismatch-assign",
+            "mismatch-enum-payload",
+            "mismatch-fn-args",
+            "mismatch-result-literal",
+            "mismatch-return",
+            "mismatch-struct-field",
+            "missing-return",
+            "non-void-expression",
+            "redefine-global",
+            "unreachable-args",
+            "unreachable-expression",
+        ];
+
         describe("compiler matches initial", () => {
             for (const fileName of TESTED_SAMPLES) {
                 it(`compiles ${fileName}`, async () => {
@@ -1540,37 +1570,7 @@ async function commandTest() {
                 }
             };
 
-            const files = [
-                "out-of-order-defs",
-                "const-context",
-                "enum-payload-compare",
-                "fault-tolerance",
-                "forbid-memory",
-                "include-redefinition",
-                "incompatible-operator",
-                "infer-arity",
-                "infer-not-named",
-                "inline-fn-args",
-                "inline-fn-arity",
-                // "inline-fn-type-args",
-                // "invalid-assign-target",
-                // "invalid-condition-type",
-                // "malformed-struct-literal",
-                // "mismatch-array-item",
-                // "mismatch-assign",
-                // "mismatch-enum-payload",
-                // "mismatch-fn-args",
-                // "mismatch-result-literal",
-                // "mismatch-return",
-                // "mismatch-struct-field",
-                // "missing-return",
-                // "non-void-expression",
-                // "redefine-global",
-                // "unreachable-args",
-                // "unreachable-expression",
-            ];
-
-            for (const file of files) {
+            for (const file of TESTED_ERROR_SAMPLES) {
                 const fileName = `examples/test/compile-errors/${file}.lo`;
                 it(`reports the same for ${fileName}`, async () => {
                     assert.strictEqual(
@@ -1590,6 +1590,31 @@ async function commandTest() {
                     assert.strictEqual(
                         new TextDecoder().decode(inspect1),
                         new TextDecoder().decode(inspect2),
+                    );
+                });
+            }
+        });
+
+        describe("compiler error inspections match initial", () => {
+            const inspectOutput = async (
+                compiler: typeof lo,
+                fileName: string,
+            ): Promise<string> => {
+                const stdout = new WASI.VirtualFD();
+                try {
+                    await compiler(["inspect", fileName], { stdout });
+                } catch {
+                    // error is just generic exit 1 here, check stdout for more info
+                }
+                return new TextDecoder().decode(stdout.flushAndRead());
+            };
+
+            for (const file of TESTED_ERROR_SAMPLES) {
+                const fileName = `examples/test/compile-errors/${file}.lo`;
+                it(`inspects ${fileName}`, async () => {
+                    assert.strictEqual(
+                        await inspectOutput(loSelfHosted, fileName),
+                        await inspectOutput(lo, fileName),
                     );
                 });
             }

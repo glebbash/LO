@@ -1828,7 +1828,10 @@ fn Typer::type_code_block(
         }
 
         if diverges {
-            // TODO: port
+            self.reporter.warning(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(self.registry.error_arena, "Unreachable expression"),
+                loc: expr.loc(),
+            }))
         }
 
         let type_id = self.type_code_expr_and_load(ctx, expr) catch err {
@@ -1839,7 +1842,13 @@ fn Typer::type_code_block(
         let expr_type = self.get_type(type_id)
 
         if Typer::count_primitive_components(self.registry, expr_type) > 0 && void_only {
-            // TODO: port
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Non void expression in block. Use `let _ = <expr>` to ignore expression result.",
+                ),
+                loc: expr.loc(),
+            }))
         }
 
         if expr_type.equals(Type::Never) {
@@ -1859,8 +1868,13 @@ fn Typer::type_code_block(
 
     if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
         let fn_info = self.registry.functions.get!(*ctx.fn_index)
-
-        // TODO: port
+        if !self.get_type(fn_info.type_.output).equals(Type::Void) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                // error message stolen from clang
+                message: String::from_str_in(self.registry.error_arena, "Control reaches end of non-void function"),
+                loc: fn_info.definition_loc,
+            }))
+        }
     }
 
     self.store_expr_info(ctx, block.block_expr_id, self.registry.block_info.len)
@@ -2059,7 +2073,35 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             }
         }
 
-        // TODO: port missing struct fields check
+        if struct_literal.body.fields.len < struct_def.fields.len {
+            let missing_fields = Vec::new!<str>()
+            for struct_field in struct_def.fields.iter!() {
+                let is_provided = false
+                // TODO: port, Rust uses a labeled loop + continue instead of `is_provided`
+                for provided_field in struct_literal.body.fields.iter!() {
+                    if provided_field.key.equals(struct_field.field_name) {
+                        is_provided = true
+                        break
+                    }
+                }
+                if !is_provided {
+                    missing_fields.push!(struct_field.field_name)
+                }
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Missing struct fields: ")
+            for i in 0..missing_fields.len {
+                if i != 0 {
+                    message.push_str(", ")
+                }
+                message.push_str(missing_fields.get!(i))
+            }
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.struct_name.loc,
+            }))
+        }
 
         return Ok()
     }
@@ -2093,6 +2135,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
                     message: message,
                     loc: item_expr.loc(),
                 }))
+                continue
             }
 
             self.report_if_err!(self.push_const_expr_bytes(bytes, item_expr, item_type))
@@ -2176,13 +2219,17 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     }
 
     if match CodeExpr::Let(let_expr) = expr {
-        self.type_code_expr(ctx, let_expr.value) catch err {
-            self.report_error(err)
+        let value_result = self.type_code_expr(ctx, let_expr.value)
+        if value_result.err as u32 != 0 {
+            self.report_error(value_result.err)
+        }
+
+        let value_type_id_ptr = self.load_type(ctx, let_expr.value)
+        if value_type_id_ptr == null {
             self.store_type(ctx, let_expr.id, Type::Void)
             return Ok()
         }
-
-        let value_type_id = *self.load_type(ctx, let_expr.value)
+        let value_type_id = *value_type_id_ptr
 
         if self.get_type(value_type_id).equals(Type::Never) {
             self.store_type(ctx, let_expr.id, Type::Never)
@@ -2660,7 +2707,18 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
         if call.fn_name.repr.equals("unreachable") {
             self.store_type(ctx, call.id, Type::Never)
 
-            // TODO: port
+            if call.args.items.len != 0 || call.type_args.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): never`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
 
             return Ok()
         }
@@ -2981,9 +3039,25 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     if match CodeExpr::If(if_expr) = expr {
         let then_ctx = self.child_ctx(ctx, ScopeKind::Block)
 
-        // TODO: port
         if match IfCond::Expr(cond_expr) = if_expr.cond {
-            self.report_if_err!(self.type_code_expr_and_load(ctx, *cond_expr))
+            let cond_result = self.type_code_expr_and_load(ctx, *cond_expr)
+            if cond_result.err as u32 != 0 {
+                self.report_error(cond_result.err)
+            } else {
+                if !self.get_type(cond_result.ok).equals(Type::Bool) {
+                    let message = String::from_str_in(self.registry.error_arena, "Invalid condition type: ")
+                    do message.push_str(it) with (
+                        self.registry.fmt(self.get_type(cond_result.ok)),
+                        ", expected: ",
+                        self.registry.fmt(Type::Bool),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: (*cond_expr).loc(),
+                    }))
+                }
+            }
         }
         if match IfCond::Match(match_header) = if_expr.cond {
             self.report_if_err!(self.type_match_header(then_ctx, match_header))
@@ -3711,8 +3785,20 @@ fn Typer::type_fn_call(
     }
 
     if all_good && !self.is_types_compatible(fn_info.type_.inputs, arg_types) {
-        // TODO: port
-        todo!()
+        let message = String::from_str_in(self.registry.error_arena, "Invalid function arguments for function ")
+        do message.push_str(it) with (
+            fn_info.name,
+            ": [",
+            self.registry.fmt_many(arg_types),
+            "], expected [",
+            self.registry.fmt_many(fn_info.type_.inputs),
+            "]",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
     }
 
     return Ok()
@@ -3787,8 +3873,17 @@ fn Typer::type_inline_fn_call(
         type_args.push!(self.build_type(parent_ctx, type_arg)?)
     }
     if type_args.len != inline_fn_def.decl.type_params.len {
-        // TODO: port
-        todo!()
+        let message = String::from_str_in(self.registry.error_arena, "Invalid number of type args, expected ")
+        do message.push_str(it) with (
+            inline_fn_def.decl.type_params.len.to_tmp_str!(),
+            ", got ",
+            type_arg_exprs.len.to_tmp_str!(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
     }
     for i in 0..inline_fn_def.decl.type_params.len {
         self.define_type(
@@ -4263,8 +4358,7 @@ fn Typer::get_variable_kind(&self, ctx: &TyContext, expr: CodeExpr): Result(Vari
         return Ok(VariableKind::Readonly)
     }
 
-    // TODO: port
-    todo!()
+    return Err(VoidError::VALUE)
 }
 
 fn Typer::process_memory_op(&self, loc: Loc) {
@@ -4507,7 +4601,8 @@ fn Typer::get_type_id_or_err(
     }
 
     if symbol.kind == TySymbolKind::TypeAlias {
-        let type_alias = self.type_aliases.get!(symbol.col_index)
+        let type_alias = self.type_aliases.at!(symbol.col_index)
+        self.resolve_type_alias(type_alias)
 
         // don't print inspection for built-ins
         if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
