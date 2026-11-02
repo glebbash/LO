@@ -197,10 +197,13 @@ This should print something like the following:
 
 ```text
 Usage:
-  lo compile <input.lo>
-  lo inspect <input.lo>
-  lo format <input.lo>
+  lo compile <input.lo> // compiles source file to a WASM binary
+  lo inspect <input.lo> // emits JSON inspections
+  lo format  <input.lo> // prints formatted version of the source
+  lo flatten <input.lo> // prints the source with all includes inlined
 ```
+
+> NOTE: passing `-i` instead of `<input.lo>` reads the source from `<stdin>`
 
 ---
 

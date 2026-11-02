@@ -8,7 +8,7 @@ For the full reference see [README.md](./README.md). For real code, see `test/*.
 
 - **As simple as practically possible.** Both the language and the compiler should stay small enough to understand fully. Every feature has to earn its place, and many decisions were weighed against "does this make the compiler bigger?" (see the goals in the [README](../README.md)).
 - **WASM only.** Targeting a single, small, well-specified target is one of the biggest simplicity wins: no backends, no ABI zoo, no linker. The output is close to the source, so `wasm2wat` is the "debugger" and the provenance tool.
-- **Few dependencies.** Ideally just the compiler (`lo.wasm`) and the source. The end goal is a self-hosted compiler.
+- **Few dependencies.** Ideally just the compiler (`lo.wasm`) and the source. The compiler is self-hosted: `src/*.lo` is built by itself, byte-identical to the Rust bootstrap's output.
 - **Explicit over implicit.** Manual memory, explicit allocators, no inference for literals, no hidden control flow.
 - **Practical, not minimal for its own sake.** Features that make real programs (including the compiler itself) pleasant are in, as long as they stay cheap to implement. Many were driven by writing the self-hosted compiler.
 - **Document the process.** Design alternatives are kept in [exploration/](./exploration) (for example `apply-for-all.lo` and `expr-piping.lo` list options with pros and cons), and the journey is in the DevLog.
@@ -44,7 +44,7 @@ Everything else lives inside function bodies. There are no modules, namespaces, 
 
 ## Where it's going
 
-Finish the self-hosted port, then exhaustive matches, macro validation, a compiler-managed stack, a better error ABI (`<tag><ok><err>`), and size/debug tooling.
+Exhaustive matches, macro validation, a compiler-managed stack, a better error ABI (`<tag><ok><err>`), and size/debug tooling.
 
 ## Closest comparisons
 

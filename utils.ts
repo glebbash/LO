@@ -1404,12 +1404,21 @@ async function commandTest() {
             "test/demos/wasm4/src/blink.lo",
             "test/demos/wasm4/src/dark-maze.lo",
             "test/demos/wasm4/src/slasher.lo",
-            "src/0-cli.lo",
-            "test/kitchen-sink.lo",
+
+            // extras
             "test/inline-let.lo",
             "test/wide-for-range.lo",
             "test/const-data.lo",
             "test/include-alias.lo",
+            "test/backslashes.lo",
+            "test/double-backslashes.lo",
+            "test/expr-pipe.lo",
+            "test/itemof.lo",
+            "test/demos/vscode_wasm_issue_161.lo",
+            "test/kitchen-sink.lo",
+
+            // compiler itself
+            "src/0-cli.lo",
         ];
 
         const TESTED_ERROR_SAMPLES = [
