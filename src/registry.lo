@@ -515,8 +515,6 @@ fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId
         return &break_info.expr_type_id
     }
 
-    // TODO: port other expr kinds
-
     return expr_info
 }
 

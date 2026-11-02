@@ -141,7 +141,25 @@ fn Type::equals(self, other): bool {
         }
     }
 
-    // TODO: port Container
+    if match Type::Container(self_ctr) = self {
+        if match Type::Container(other_ctr) = other {
+            if self_ctr.container != other_ctr.container {
+                return false
+            }
+
+            if self_ctr.items.len != other_ctr.items.len {
+                return false
+            }
+
+            for i in 0..self_ctr.items.len {
+                if self_ctr.items.get!(i) != other_ctr.items.get!(i) {
+                    return false
+                }
+            }
+
+            return true
+        }
+    }
 
     return false
 }
@@ -602,8 +620,6 @@ fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
                 wasm_global_index: 0, // placeholder
             })
         }
-
-        // TODO: port
     }
 }
 
@@ -1735,8 +1751,6 @@ fn Typer::type_fn(&self, parent_ctx: &TyContext, fn_index: u32) {
 }
 
 fn Typer::run_delayed_actions(&self) {
-    // TODO: port inspect_stats
-
     if self.registry.memory_info == null && self.autodefine_memory {
         self.registry.memory_info = heap::new!(MemoryInfo {
             min_pages: heap::new!(1u32),
@@ -2077,13 +2091,14 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             let missing_fields = Vec::new!<str>()
             for struct_field in struct_def.fields.iter!() {
                 let is_provided = false
-                // TODO: port, Rust uses a labeled loop + continue instead of `is_provided`
+
                 for provided_field in struct_literal.body.fields.iter!() {
                     if provided_field.key.equals(struct_field.field_name) {
                         is_provided = true
                         break
                     }
                 }
+
                 if !is_provided {
                     missing_fields.push!(struct_field.field_name)
                 }
@@ -2498,8 +2513,7 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
             return Ok()
         }
 
-        // TODO: port
-        todo!()
+        @unreachable()
     }
 
     if match CodeExpr::Cast(cast) = expr {
@@ -2702,8 +2716,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
     }
 
     if match CodeExpr::IntrinsicCall(call) = expr {
-        // TODO: port
-
         if call.fn_name.repr.equals("unreachable") {
             self.store_type(ctx, call.id, Type::Never)
 
@@ -2985,8 +2997,6 @@ fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &
                 loc: call.fn_name.loc,
             }))
         }
-
-        // TODO: port
 
         let message = String::from_str_in(self.registry.error_arena, "Unknown intrinsic: ")
         message.push_str(call.fn_name.repr)
@@ -3543,7 +3553,6 @@ fn Typer::get_binary_op_kind(
     } else if match Type::Container(_) = operand_type {
         return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
     } else {
-        // TODO: port
         todo!()
     }
 
@@ -5484,22 +5493,26 @@ fn Typer::push_const_expr_bytes(
             output.push!(int.value as u8)
             return Ok()
         }
+
         if match Type::I8(_) = item_type {
             output.push!(int.value as i8 as u8)
             return Ok()
         }
+
         if match Type::U16(_) = item_type {
             let value = int.value as u16
             output.push!(value as u8)
             output.push!((value >> 8u16) as u8)
             return Ok()
         }
+
         if match Type::I16(_) = item_type {
             let value = int.value as i16 as u16
             output.push!(value as u8)
             output.push!((value >> 8u16) as u8)
             return Ok()
         }
+
         if match Type::I32(_) = item_type {
             let value = int.value as i32 as u32
             output.push!(value as u8)
@@ -5508,6 +5521,7 @@ fn Typer::push_const_expr_bytes(
             output.push!((value >> 24) as u8)
             return Ok()
         }
+
         if match Type::U64(_) = item_type {
             let value = int.value as u64
             output.push!(value as u8)
@@ -5520,6 +5534,7 @@ fn Typer::push_const_expr_bytes(
             output.push!((value >> 56u64) as u8)
             return Ok()
         }
+
         if match Type::I64(_) = item_type {
             let value = int.value as u64
             output.push!(value as u8)
@@ -5533,18 +5548,16 @@ fn Typer::push_const_expr_bytes(
             return Ok()
         }
 
-        match Type::U32(_) = item_type else {
-            // TODO: port other Type variants
-            todo!()
+        if match Type::U32(_) = item_type {
+            let value = int.value as u32
+            output.push!(value as u8)
+            output.push!((value >> 8) as u8)
+            output.push!((value >> 16) as u8)
+            output.push!((value >> 24) as u8)
+            return Ok()
         }
 
-        let value = int.value as u32
-        output.push!(value as u8)
-        output.push!((value >> 8) as u8)
-        output.push!((value >> 16) as u8)
-        output.push!((value >> 24) as u8)
-
-        return Ok()
+        todo!()
     }
 
     if match CodeExpr::StringLiteral(str_literal) = item {
@@ -5563,7 +5576,6 @@ fn Typer::push_const_expr_bytes(
         return Ok()
     }
 
-    // TODO: port other CodeExpr variants
     todo!()
 }
 

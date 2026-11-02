@@ -598,8 +598,7 @@ fn Codegen::codegen(
             return
         }
 
-        // TODO: port
-        todo!()
+        @unreachable()
     }
 
     if match CodeExpr::InfixOp(infix_op) = expr {
@@ -696,8 +695,7 @@ fn Codegen::codegen(
             return
         }
 
-        // TODO: port
-        todo!()
+        @unreachable()
     }
 
     if match CodeExpr::MethodCall(method_call) = expr {
@@ -709,8 +707,7 @@ fn Codegen::codegen(
             return
         }
 
-        // TODO: port
-        todo!()
+        @unreachable()
     }
 
     if match CodeExpr::InlineFnCall(call) = expr {
@@ -724,8 +721,6 @@ fn Codegen::codegen(
     }
 
     if match CodeExpr::IntrinsicCall(call) = expr {
-        // TODO: port
-
         if call.fn_name.repr.equals("unreachable") {
             instrs.push!(WasmInstr::Unreachable)
             return
@@ -800,8 +795,6 @@ fn Codegen::codegen(
 
             return
         }
-
-        // TODO: port
 
         let message = String::new_in(self.registry.error_arena, 16)
         do message.push_str(it) with ("Unknown intrinsic: ", call.fn_name.repr)
@@ -1376,8 +1369,6 @@ fn Codegen::get_block_inout_type(&self, inputs: &Vec(Type), output: Type): u32 {
 }
 
 fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): Result(VarInfo, &VoidError) {
-    // TODO: port
-
     if match CodeExpr::Paren(paren) = expr {
         return self.var_from_expr(ctx, paren.expr)
     }
@@ -1385,8 +1376,6 @@ fn Codegen::var_from_expr(&self, ctx: &ExprContext, expr: CodeExpr): Result(VarI
     if match CodeExpr::Ident(var_name) = expr {
         let expr_info = self.get_expr_info(ctx, var_name.id, var_name.loc)
         let value_info = self.registry.value_info.at!(expr_info)
-
-        // TODO: port
 
         if value_info.kind == ValueKind::Local {
             let local = self.registry.locals.at!(value_info.col_index)
@@ -1614,8 +1603,6 @@ fn Codegen::codegen_var_get(
         return
     }
 
-    // TODO: port
-
     todo!()
 }
 
@@ -1689,9 +1676,7 @@ fn Codegen::codegen_var_set(&self, ctx: &ExprContext, instrs: &Vec(WasmInstr), v
         return
     }
 
-    // TODO: port
-
-    todo!()
+    @unreachable()
 }
 
 fn Codegen::codegen_local_set(&self, instrs: &Vec(WasmInstr), local_type: Type, local_index: u32) {
