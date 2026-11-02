@@ -9,7 +9,7 @@ inline let SLOPE_I = 1
 inline let SLOPE_J = 3
 
 fn main() {
-    let input = fs::read_file!("./examples/test/demos/aoc2020/3.txt")
+    let input = fs::read_file!("./test/demos/aoc2020/3.txt")
     defer input.free()
 
     let map = Map::parse(input)

@@ -2,7 +2,7 @@
 
 LO is a small, low-level, statically typed language that compiles straight to WebAssembly (WASI for I/O). If you know C, Zig or Go, most of it will feel familiar. The surface looks like Rust/TypeScript. There is no borrow checker, no GC, and almost no implicit behavior.
 
-For the full reference see [README.md](./README.md). For real code, see `examples/test/*.lo` (small focused samples), `examples/lib/*.lo` (std) and `examples/self-hosted/*.lo` (the compiler written in LO).
+For the full reference see [README.md](./README.md). For real code, see `test/*.lo` (small focused samples), `lib/std.lo` (std) and `src/*.lo` (the compiler itself).
 
 ## Ideology
 
@@ -15,7 +15,7 @@ For the full reference see [README.md](./README.md). For real code, see `example
 
 ## Syntax shape
 
-The syntax looks like Rust/TypeScript but is closer to **Jai** in how uniform it is: top-level definitions are all "name = value" shaped, and the set of top-level forms is tiny. Per the top-level AST (`src/ast.rs`, `examples/self-hosted/ast.lo`) the only top-level expressions are:
+The syntax looks like Rust/TypeScript but is closer to **Jai** in how uniform it is: top-level definitions are all "name = value" shaped, and the set of top-level forms is tiny. Per the top-level AST (`initial-compiler/src/ast.rs`, `src/ast.lo`) the only top-level expressions are:
 
 - `[inline] let NAME = value` for globals and constants
 - `[export] [inline] fn name(...) { ... }` for functions (`inline` ones are macros, `name!`)
@@ -103,7 +103,7 @@ Finish the self-hosted port, then exhaustive matches, macro validation, a compil
 
 - `lo.wasm` is the compiler: `compile`, `inspect` (LSP-like JSON), `format`, plus an experimental interpreter.
 - A VS Code extension provides highlighting and diagnostics.
-- The Rust compiler (`src/`) is the bootstrap; `examples/self-hosted/` is the port in progress (lexer, parser, printer, AST done; typer and codegen partially).
+- The Rust compiler (`initial-compiler/src/`) is the bootstrap; `src/` is the port.
 
 ## What it does _not_ have
 

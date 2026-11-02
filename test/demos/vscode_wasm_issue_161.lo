@@ -5,7 +5,7 @@ fn main() {
     let err = 0
 
     let dir_fd = 3
-    let file_path = "./examples/hello-world.lo"
+    let file_path = "./test/demos/hello-world.lo"
     let prestat = tmp_alloc!<wasi::prestat>()
     err = wasi::fd_prestat_get(dir_fd, prestat)
     if err != 0 {

@@ -2,7 +2,7 @@
 @include("../../../lib/fs.lo")
 
 fn main() {
-    let input_buf = fs::read_file!("./examples/test/demos/aoc2020/5.txt")
+    let input_buf = fs::read_file!("./test/demos/aoc2020/5.txt")
     defer input_buf.free()
     let input = input_buf.as_str()
 

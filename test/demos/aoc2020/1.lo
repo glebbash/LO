@@ -2,7 +2,7 @@
 @include("../../../lib/fs.lo")
 
 fn main() {
-    let input = fs::read_file!("./examples/test/demos/aoc2020/1.txt")
+    let input = fs::read_file!("./test/demos/aoc2020/1.txt")
     defer input.free()
 
     let numbers = parse_numbers(input)
@@ -10,11 +10,9 @@ fn main() {
 
     for a in numbers.iter!() {
         for b in numbers.iter!() {
-            for c in numbers.iter!() {
-                if a + b + c == 2020 {
-                    println((a * b * c).to_tmp_str!())
-                    return
-                }
+            if a + b == 2020 {
+                println((a * b).to_tmp_str!())
+                return
             }
         }
     }

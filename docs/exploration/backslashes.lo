@@ -1,4 +1,4 @@
-include "./examples/lib/cli.lo"
+include "./lib/cli.lo"
 
 fn main() {
     let file_index = 2

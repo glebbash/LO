@@ -29,7 +29,7 @@ fn initial_check_state(): PasswordCheckState {
 }
 
 fn main() {
-    let input = fs::read_file!("./examples/test/demos/aoc2020/2.txt")
+    let input = fs::read_file!("./test/demos/aoc2020/2.txt")
     defer input.free()
 
     let valid_passwords_count = 0

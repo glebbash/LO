@@ -21,7 +21,6 @@ LO - small programming language targeting WASM that aims to be as simple as poss
 - Emit WASM to have the biggest target coverage with little code
 - Document the process
 
-
 ## 🪵 DevLog + Docs
 
 The journey is documented in the [LO DevLog](https://blog.glebbash.dev/?tag=lo).
@@ -30,19 +29,19 @@ And the actual docs for the compiler are in the [docs](./docs/README.md) folder.
 
 ## 👀 Examples
 
-Check out example `.lo` programs including standard library sources and WIP self-hosted compiler in the [./examples](./examples/) folder.
+Check out sample `.lo` programs including standard library and self-hosted compiler in the [src](./src/), [lib](./lib/) and [test](./test/) folders.
 
 Here are some of them with syntax highlighting from the [LO VS Code extension](#vscode-extension):
 
-- Hello world [(source)](examples/test/demos/hello-world.lo):
+- Hello world [(source)](test/demos/hello-world.lo):
 
 ![Hello World sample](./docs/assets/hello-world.png)
 
-- Advent of Code 2020 Day 1 [(source)](examples/test/demos/aoc2020/1.lo):
+- Advent of Code 2020 Day 1 [(source)](test/demos/aoc2020/1.lo):
 
 ![AOC 2020 sample](./docs/assets/aoc-2020-day1.png)
 
-- Dark Maze (WASM-4 demo game) [play it here](https://rawcdn.githack.com/glebbash/LO/da8305293f5438967619e91c6ecfd472111ccf91/examples/test/demos/wasm4/builds/dark-maze.html) or check the [source](examples/test/demos/wasm4/src/dark-maze.lo):
+- Dark Maze (WASM-4 demo game) [play it here](https://rawcdn.githack.com/glebbash/LO/da8305293f5438967619e91c6ecfd472111ccf91/test/demos/wasm4/builds/dark-maze.html) or check the [source](test/demos/wasm4/src/dark-maze.lo):
 
 ![Dark Maze gif](./docs/assets/dark-maze.gif)
 
@@ -56,8 +55,8 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 - To create a new project: Open empty folder, execute Command Palette: `LO: Initialize project in current workspace`
 - To run currently open file: execute Command Palette: `LO: Run current file`, or press ▶️ button in the top toolbar
 - Compiling files:
-  - Open Web Shell: execute Command Palette: `Terminal: Create New Web Shell`
-  - Run: `run lo.wasm compile <input>.lo > <output>.wasm`
+    - Open Web Shell: execute Command Palette: `Terminal: Create New Web Shell`
+    - Run: `run lo.wasm compile <input>.lo > <output>.wasm`
 
 ---
 
@@ -82,6 +81,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 ## 🔦 VSCode extension
 
 Available on:
+
 - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=glebbash.lo)
 - [Open VSX Registry](https://open-vsx.org/extension/glebbash/lo)
 
