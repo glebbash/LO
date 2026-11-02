@@ -14,9 +14,10 @@
 @use_memory(min_pages = 1, exported)
 
 inline let USAGE = "Usage:
-  lo compile <input.lo>
-  lo inspect <input.lo>
-  lo format <input.lo>"
+  lo compile <input.lo> // compiles source file to a WASM binary
+  lo inspect <input.lo> // emits JSON inspections
+  lo format  <input.lo> // prints formatted version of the source
+  lo flatten <input.lo> // prints the source with all includes inlined"
 
 export fn _start() {
     let args = Args::load()
@@ -56,6 +57,29 @@ export fn _start() {
     }
 
     let _ = registry.include(file_name, Loc::internal())
+
+    if command.equals("flatten") {
+        for module in registry.modules.iter!() {
+            if module.id == 0 {
+                continue
+            }
+
+            if module.id > 1 {
+                stdout_write("\n")
+            }
+
+            stdout_write("//// file: ")
+            stdout_write(module.absolute_path.as_str())
+            stdout_write("\n\n")
+
+            let printer = Printer::new(registry.modules.get!(module.id).parser)
+            printer.comment_includes = true
+            defer printer.free()
+            printer.print_file()
+        }
+
+        return
+    }
 
     let typer = Typer::new(registry)
     typer.type_all()

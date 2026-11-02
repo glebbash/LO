@@ -6,6 +6,8 @@
 type Printer = struct {
     parser: &Parser,
 
+    comment_includes: bool,
+
     indent: u32,
     comments_printed: u32,
     last_printed_item_line: u32,
@@ -18,6 +20,8 @@ type Printer = struct {
 fn Printer::new(parser: &Parser): &Printer {
     return heap::new!(Printer {
         parser: parser,
+
+        comment_includes: false,
 
         indent: 0,
         comments_printed: 0,
@@ -167,11 +171,15 @@ fn Printer::print_top_level_expr(&self, expr: TopLevelExpr) {
         @unreachable()
     }
 
-    if match TopLevelExpr::Intrinsic(instrinsic) = expr {
+    if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+        if self.comment_includes && intrinsic.fn_name.repr.equals("include") {
+            stdout_write("/// ")
+        }
+
         stdout_write("@")
-        stdout_write(instrinsic.fn_name.repr)
-        self.print_type_args(instrinsic.type_args)
-        self.print_args(instrinsic.args, instrinsic.loc)
+        stdout_write(intrinsic.fn_name.repr)
+        self.print_type_args(intrinsic.type_args)
+        self.print_args(intrinsic.args, intrinsic.loc)
         return
     }
 
