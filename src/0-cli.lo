@@ -74,8 +74,8 @@ export fn _start() {
 
             let printer = Printer::new(registry.modules.get!(module.id).parser)
             printer.comment_includes = true
-            defer printer.free()
             printer.print_file()
+            printer.free()
         }
 
         return
