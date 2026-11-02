@@ -623,6 +623,19 @@ async function commandTest() {
         assert.strictEqual(exports.main(), 0);
     });
 
+    it("compiles 42.lo with <stdin> input", async () => {
+        const stdin = new WASI.VirtualFD();
+        stdin.write(await fs.readFile("./examples/test/42.lo"));
+        stdin.flush();
+
+        const output = await lo(["compile", "-i"], { stdin });
+
+        const program = await loadWasm(output);
+        const result = program.main();
+
+        assert.strictEqual(result, 42);
+    });
+
     describe("aoc", () => {
         it("compiles 2020 day 1", async () => {
             const part1 = await runAoc(
@@ -1376,21 +1389,6 @@ async function commandTest() {
         });
     });
 
-    describe("<stdin> input", () => {
-        it("compiles 42.lo", async () => {
-            const stdin = new WASI.VirtualFD();
-            stdin.write(await fs.readFile("./examples/test/42.lo"));
-            stdin.flush();
-
-            const output = await lo(["compile", "-i"], { stdin });
-
-            const program = await loadWasm(output);
-            const result = program.main();
-
-            assert.strictEqual(result, 42);
-        });
-    });
-
     describe("formatter", async () => {
         if (process.argv.includes("--skip-fmt")) {
             return;
@@ -1551,6 +1549,19 @@ async function commandTest() {
                     assert.deepStrictEqual(compiled1, compiled2);
                 });
             }
+        });
+
+        it("compiles 42.lo with <stdin> input", async () => {
+            const stdin = new WASI.VirtualFD();
+            stdin.write(await fs.readFile("./examples/test/42.lo"));
+            stdin.flush();
+
+            const output = await loSelfHosted(["compile", "-i"], { stdin });
+
+            const program = await loadWasm(output);
+            const result = program.main();
+
+            assert.strictEqual(result, 42);
         });
 
         describe("compiler errors match initial", () => {

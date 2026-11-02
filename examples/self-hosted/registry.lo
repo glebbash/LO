@@ -310,7 +310,7 @@ fn Registry::include(
 
     let module_id = self.modules.len
 
-    let _source = fs::read_file(absolute_path.as_str()) catch err {
+    let _source = Registry::read_file(absolute_path.as_str()) catch err {
         let message = String::new_in(self.error_arena, 64)
         do message.push_str(it) with (
             "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
@@ -387,6 +387,15 @@ fn Registry::include(
     self.module_import_order.push!(module_id)
 
     return Ok(module_id)
+}
+
+fn Registry::read_file(file_path: str): Result(String, wasi::Err) {
+    if file_path.equals("<stdin>") {
+        let bytes = fs::read_fd(wasi::FD_STDIN)?
+        return Ok(String::from_chars(bytes))
+    }
+
+    return fs::read_file(file_path)
 }
 
 fn Registry::add_local(

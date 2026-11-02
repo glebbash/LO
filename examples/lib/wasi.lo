@@ -1,6 +1,7 @@
 type wasi::Err = u32
 
 inline let wasi::Err::SUCCESS = 0
+inline let wasi::Err::AGAIN = 6
 inline let wasi::Err::BADF = 8
 inline let wasi::FD_STDIN = 0
 inline let wasi::FD_STDOUT = 1

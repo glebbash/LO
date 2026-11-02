@@ -94,6 +94,11 @@ fn fs::read_fd(fd: u32): Result(&Vec(u8), wasi::Err) {
     loop {
         let err = wasi::fd_read(fd, in_vec as &[]wasi::IOVec, 1, nread_ref)
         if err != wasi::Err::SUCCESS {
+            // stdin is empty
+            if fd == 0 && err == wasi::Err::AGAIN {
+                break
+            }
+
             return Err(err)
         }
         let nread = *nread_ref
