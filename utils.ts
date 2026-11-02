@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import { WASI, type WASIOptions } from "./wasi-shim.ts";
 
 const COMPILER_PATH = "lo.wasm";
-const SH_COMPILER_SOURCE_PATH = "examples/self-hosted/0-cli.lo";
+const INITIAL_COMPILER_PATH = "initial-compiler/lo.wasm";
 
 await main();
 
@@ -48,17 +48,6 @@ async function main() {
             args: process.argv.slice(3),
             env: process.env,
             preopens: { ".": "." },
-        });
-    }
-
-    if (process.argv[2] === "sh") {
-        const v1 = await loadLoCompiler(await fs.readFile(COMPILER_PATH));
-        const selfHostedBin = await v1(["compile", SH_COMPILER_SOURCE_PATH]);
-
-        return runWASI(selfHostedBin, {
-            preopens: { ".": "." },
-            args: ["lo", ...process.argv.slice(3)],
-            returnOnExit: false,
         });
     }
 
@@ -1421,13 +1410,14 @@ async function commandTest() {
         return;
     }
 
-    test("self-hosted", async () => {
-        const loBinary = await compile(SH_COMPILER_SOURCE_PATH);
-        const loSelfHosted = await loadLoCompiler(loBinary);
+    test("self-hosted matches initial", async () => {
+        const loInitial = await loadLoCompiler(
+            await fs.readFile(INITIAL_COMPILER_PATH),
+        );
 
         describe("formatter", async () => {
             const format = async (fileName = "-i") => {
-                const output = await loSelfHosted(["format", fileName]);
+                const output = await lo(["format", fileName]);
                 return new TextDecoder().decode(output);
             };
 
@@ -1543,8 +1533,8 @@ async function commandTest() {
         describe("compiler matches initial", () => {
             for (const fileName of TESTED_SAMPLES) {
                 it(`compiles ${fileName}`, async () => {
-                    const compiled1 = await loSelfHosted(["compile", fileName]);
-                    const compiled2 = await lo(["compile", fileName]);
+                    const compiled1 = await lo(["compile", fileName]);
+                    const compiled2 = await loInitial(["compile", fileName]);
 
                     assert.deepStrictEqual(compiled1, compiled2);
                 });
@@ -1556,7 +1546,7 @@ async function commandTest() {
             stdin.write(await fs.readFile("./examples/test/42.lo"));
             stdin.flush();
 
-            const output = await loSelfHosted(["compile", "-i"], { stdin });
+            const output = await lo(["compile", "-i"], { stdin });
 
             const program = await loadWasm(output);
             const result = program.main();
@@ -1566,7 +1556,7 @@ async function commandTest() {
 
         describe("compiler errors match initial", () => {
             const outcome = async (
-                compiler: typeof lo,
+                compiler: typeof loInitial,
                 fileName: string,
             ): Promise<string> => {
                 const stderr = new WASI.VirtualFD();
@@ -1585,8 +1575,8 @@ async function commandTest() {
                 const fileName = `examples/test/compile-errors/${file}.lo`;
                 it(`reports the same for ${fileName}`, async () => {
                     assert.strictEqual(
-                        await outcome(loSelfHosted, fileName),
                         await outcome(lo, fileName),
+                        await outcome(loInitial, fileName),
                     );
                 });
             }
@@ -1595,8 +1585,8 @@ async function commandTest() {
         describe("compiler inspections match initial", () => {
             for (const fileName of TESTED_SAMPLES) {
                 it(`inspects ${fileName}`, async () => {
-                    const inspect1 = await loSelfHosted(["inspect", fileName]);
-                    const inspect2 = await lo(["inspect", fileName]);
+                    const inspect1 = await lo(["inspect", fileName]);
+                    const inspect2 = await loInitial(["inspect", fileName]);
 
                     assert.strictEqual(
                         new TextDecoder().decode(inspect1),
@@ -1608,7 +1598,7 @@ async function commandTest() {
 
         describe("compiler error inspections match initial", () => {
             const inspectOutput = async (
-                compiler: typeof lo,
+                compiler: typeof loInitial,
                 fileName: string,
             ): Promise<string> => {
                 const stdout = new WASI.VirtualFD();
@@ -1622,10 +1612,11 @@ async function commandTest() {
 
             for (const file of TESTED_ERROR_SAMPLES) {
                 const fileName = `examples/test/compile-errors/${file}.lo`;
+
                 it(`inspects ${fileName}`, async () => {
                     assert.strictEqual(
-                        await inspectOutput(loSelfHosted, fileName),
                         await inspectOutput(lo, fileName),
+                        await inspectOutput(loInitial, fileName),
                     );
                 });
             }
