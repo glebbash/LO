@@ -1,3 +1,8 @@
+// AI Use Disclosure: Most of this file was ported from the initial Rust
+//   compiler as closely as possible using AI.
+// It has been heavily tested for conformance with the original, but has not
+//   yet undergone extensive human review and/or refactoring.
+
 @include("./common.lo")
 @include("./ast.lo")
 @include("./registry.lo")
@@ -1228,7 +1233,7 @@ fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
             if !let_expr.is_inline {
                 let const_result = self.get_const_value_or_err(ctx, let_expr.value)
                 if const_result.err as u32 != 0 {
-                    return
+                    continue
                 }
             }
 

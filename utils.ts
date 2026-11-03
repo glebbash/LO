@@ -774,6 +774,7 @@ async function commandTest() {
                     (err as Error).message,
                     m`
                     ERROR: test/compile-errors/const-context.lo:6:9 - Expression not allowed in const context
+                    ERROR: test/compile-errors/const-context.lo:9:9 - Expression not allowed in const context
 
                     `,
                 );

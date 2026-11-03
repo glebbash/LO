@@ -868,7 +868,7 @@ impl Typer {
                     if !let_expr.is_inline
                         && let None = self.get_const_value_or_err(ctx, &let_expr.value)
                     {
-                        return;
+                        continue;
                     }
 
                     let value_type_id =

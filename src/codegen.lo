@@ -1,3 +1,8 @@
+// AI Use Disclosure: Most of this file was ported from the initial Rust
+//   compiler as closely as possible using AI.
+// It has been heavily tested for conformance with the original, but has not
+//   yet undergone extensive human review and/or refactoring.
+
 @include("./common.lo")
 @include("./wasm.lo")
 
