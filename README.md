@@ -85,7 +85,7 @@ Available on:
 - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=glebbash.lo)
 - [Open VSX Registry](https://open-vsx.org/extension/glebbash/lo)
 
-> See [Inspection](./docs/README.md#52-inspecting-code-ide-intergration) if you are interested in intergrating with other IDEs
+> See [Inspection](./docs/README.md#inspecting) if you are interested in intergrating with other IDEs
 
 ## ❔ More info
 
