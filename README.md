@@ -16,10 +16,11 @@ LO - small programming language targeting WASM that aims to be as simple as poss
 ## 🏆 Goals
 
 - Make both the language and the compiler small and easy to understand
-- Have little to no dependencies
+- Have literally **no** dependencies (except for WASM)
 - Be easy to use and modify
 - Emit WASM to have the biggest target coverage with little code
 - Document the process
+- Get to self-hosted (done) and beyond 🚀
 
 ## 🪵 DevLog + Docs
 
