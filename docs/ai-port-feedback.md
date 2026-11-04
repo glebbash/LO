@@ -1,6 +1,6 @@
 # LO painpoints and feature ideas
 
-> **AI-generated.** Sections are labeled by author. Treat AI sections as feedback from using the language, not as design decisions.
+> **AI-generated.**
 
 ## Claude Sonnet 5.5 (Copilot harness, session of 2026-10-28)
 
