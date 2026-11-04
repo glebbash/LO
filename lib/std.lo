@@ -833,16 +833,24 @@ fn u64::write_to(self, output: String) {
 
 // utils
 
-inline fn array_at!<T>(array: &[]T, index: u32): &T {
-    (array as u32 + index * sizeof T) as &T
-}
-
 inline fn u32::max!(a: u32, b: u32): u32 {
     let max = a
     if b > a {
         max = b
     }
     max
+}
+
+inline fn array_at!<T>(array: &[]T, index: u32): &T {
+    (array as u32 + index * sizeof T) as &T
+}
+
+inline fn seg::at!(self: infer(Self), index: u32): &itemof(Self) {
+    array_at!<itemof(Self)>(self.ptr, index)
+}
+
+inline fn seg::get!(self: infer(Self), index: u32): itemof(Self) {
+    *self.at!(index)
 }
 
 inline fn seg::skip!(self: infer(Self), amount: u32): Self {
