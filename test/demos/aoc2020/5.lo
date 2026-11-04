@@ -1,0 +1,50 @@
+@include("../../../lib/cli.lo")
+@include("../../../lib/fs.lo")
+
+fn main() {
+    let input_buf = fs::read_file!("./test/demos/aoc2020/5.txt")
+    defer input_buf.free()
+    let input = input_buf.as_str()
+
+    let tickets_count = input.len / 11 // 10 chars seat + newline
+    let max_seat_id = 0
+    for i in 0..tickets_count {
+        let seat_id = parse_seat_id(input.skip_chars(i * 11))
+        if seat_id >= max_seat_id {
+            max_seat_id = seat_id
+        }
+    }
+
+    println(max_seat_id.to_tmp_str!())
+}
+
+fn parse_seat_id(input: str): u32 {
+    let row_max = 128
+    let row_hi = row_max - 1
+    let row_lo = 0
+    for c in input.iter!().take!(7) {
+        if c == 'F' {
+            row_max /= 2
+            row_hi -= row_max
+        }
+        if c == 'B' {
+            row_max /= 2
+            row_lo += row_max
+        }
+    }
+    let col_max = 8
+    let col_hi = col_max - 1
+    let col_lo = 0
+    for c in input.iter!().skip!(7).take!(3) {
+        if c == 'L' {
+            col_max /= 2
+            col_hi -= col_max
+        }
+        if c == 'R' {
+            col_max /= 2
+            col_lo += col_max
+        }
+    }
+    let seat_id = row_lo * 8 + col_lo
+    return seat_id
+}

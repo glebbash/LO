@@ -1,0 +1,5 @@
+@include("./factorial.lo", alias = "math")
+
+export fn main(): u32 {
+    return math::factorial(5)
+}

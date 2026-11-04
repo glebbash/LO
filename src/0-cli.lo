@@ -1,0 +1,114 @@
+// NOTE: this file is the project entry point. '0-' prefix is used to
+//   force it to the top of `ls` output
+
+@include("../lib/args.lo")
+@include("../lib/wasi.lo")
+
+@include("./common.lo")
+@include("./lexer.lo")
+@include("./registry.lo")
+@include("./printer.lo")
+@include("./typer.lo")
+@include("./codegen.lo")
+
+@use_memory(min_pages = 1, exported)
+
+inline let USAGE = "Usage:
+  lo compile <input.lo> // compiles source file to a WASM binary
+  lo inspect <input.lo> // emits JSON inspections
+  lo format  <input.lo> // prints formatted version of the source
+  lo flatten <input.lo> // prints the source with all includes inlined"
+
+export fn _start() {
+    let args = Args::load()
+    defer args.free()
+
+    if args.argc < 3 {
+        stderr_writeln(USAGE)
+        wasi::proc_exit(1)
+    }
+
+    let command = args.get(1)
+    let file_name = args.get(2)
+    if file_name.equals("-i") {
+        file_name = "<stdin>"
+    }
+
+    let registry = Registry::new()
+    defer registry.free()
+
+    if command.equals("format") {
+        registry.in_single_file_mode = true
+
+        let module_id = registry.include(file_name, Loc::internal()) catch _ {
+            wasi::proc_exit(1)
+        }
+
+        let printer = Printer::new(registry.modules.get!(module_id).parser)
+        defer printer.free()
+
+        printer.print_file()
+
+        return
+    }
+
+    if command.equals("inspect") {
+        registry.reporter.begin_inspection()
+    }
+
+    let _ = registry.include(file_name, Loc::internal())
+
+    if command.equals("flatten") {
+        for module in registry.modules.iter!() {
+            if module.id == 0 {
+                continue
+            }
+
+            if module.id > 1 {
+                stdout_write("\n")
+            }
+
+            stdout_write("//// file: ")
+            stdout_write(module.absolute_path.as_str())
+            stdout_write("\n\n")
+
+            let printer = Printer::new(registry.modules.get!(module.id).parser)
+            printer.comment_includes = true
+            printer.print_file()
+            printer.free()
+        }
+
+        return
+    }
+
+    let typer = Typer::new(registry)
+    typer.type_all()
+
+    if registry.reporter.in_inspection_mode {
+        registry.reporter.end_inspection()
+
+        if registry.reporter.error_count == 0 {
+            return
+        }
+    }
+
+    if registry.reporter.error_count > 0 {
+        wasi::proc_exit(1)
+    }
+
+    let codegen = Codegen::new(registry)
+    codegen.codegen_all()
+
+    if command.equals("compile") {
+        let binary = Vec::new!<u8>()
+        codegen.wasm_module.dump(binary)
+        stdout_write(String::from_chars(binary).as_str())
+        return
+    }
+
+    do stderr_write(it) with (
+        "Unknown command: ", \\ command, \\ "\n",
+        USAGE, \\ "\n",
+    )
+    wasi::proc_exit(1)
+}

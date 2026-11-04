@@ -1,0 +1,324 @@
+@include("../lib/std.lo", with_extern)
+@include("../lib/fs.lo", with_extern)
+@include("../lib/wasi.lo")
+@include("../lib/print.lo")
+
+@include("./registry.lo")
+
+type Pos = struct {
+    offset: u32,
+    line: u32,
+    col: u32,
+}
+
+type Loc = struct {
+    module_id: u32,
+    pos: Pos,
+    end_pos: Pos,
+}
+
+fn Loc::internal(): Loc {
+    return Loc {
+        module_id: 0, // internal
+        pos: Pos { offset: 0, line: 1, col: 1 },
+        end_pos: Pos { offset: 0, line: 1, col: 1 },
+    }
+}
+
+fn Loc::read_span(self, source: str): str {
+    return source.slice(self.pos.offset, self.end_pos.offset)
+}
+
+fn Loc::format(self, out: String, registry: &Registry) {
+    do out.push_str(it) with (
+        registry.modules.get!(self.module_id).absolute_path.as_str(),
+        ":", \\ self.pos.line.to_tmp_str!(),
+        ":", \\ self.pos.col.to_tmp_str!(),
+    )
+}
+
+fn Loc::to_string_in(self, a: Alloc, registry: &Registry): String {
+    let out = String::new_in(a, 32)
+    self.format(out, registry)
+    return out
+}
+
+type Error = struct {
+    message: String,
+    loc: Loc,
+}
+
+fn Error::to_string_in(&self, a: Alloc, registry: &Registry): String {
+    let out = String::new_in(a, 32)
+    self.loc.format(out, registry)
+    out.push_str(" - ")
+    out.push_str(self.message.as_str())
+    return out
+}
+
+type InspectInfo = struct {
+    message: String,
+    loc: Loc,
+    linked_loc: &?Loc,
+}
+
+type Reporter = struct {
+    registry: &Registry,
+
+    in_inspection_mode: bool,
+    inspection_arena: &Arena,
+
+    error_count: u32,
+    warning_count: u32,
+}
+
+fn Reporter::new(registry: &Registry): &Reporter {
+    return heap::new!(Reporter {
+        registry: registry,
+        in_inspection_mode: false,
+        inspection_arena: Arena::new(0),
+        error_count: 0,
+        warning_count: 0,
+    })
+}
+
+fn Reporter::begin_inspection(&self) {
+    self.in_inspection_mode = true
+    self.inspection_arena.free()
+    self.inspection_arena = Arena::new(1024)
+    stdout_enable_buffering()
+    stdout_writeln("[")
+}
+
+fn Reporter::end_inspection(&self) {
+    self.in_inspection_mode = false
+    // this item is a stub to make json array valid
+    //   as last inspection will end with a comma
+    stdout_writeln("{ \"type\": \"end\" }")
+    stdout_writeln("]")
+    stdout_disable_buffering()
+}
+
+fn Reporter::error(&self, error: &Error) {
+    self.error_count += 1
+
+    if self.in_inspection_mode {
+        let source_loc = Reporter::loc_to_tmp_str!(error.loc)
+        let content = Reporter::json_str_escape(error.message).as_str()
+
+        do stdout_write(it) with (
+            "{ ",
+            "\"type\": \"message\", ",
+            "\"content\": \"", \\ content, \\ "\", ",
+            "\"severity\": \"error\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "},\n",
+        )
+        return
+    }
+
+    let reg = self.registry
+
+    stderr_write("ERROR: ")
+    stderr_write(error.to_string_in(reg.error_arena, reg).as_str())
+    stderr_write("\n")
+}
+
+fn Reporter::warning(&self, error: &Error) {
+    self.warning_count += 1
+
+    if self.in_inspection_mode {
+        let source_loc = Reporter::loc_to_tmp_str!(error.loc)
+        let content = Reporter::json_str_escape(error.message).as_str()
+
+        do stdout_write(it) with (
+            "{ ",
+            "\"type\": \"message\", ",
+            "\"content\": \"", \\ content, \\ "\", ",
+            "\"severity\": \"warning\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "},\n",
+        )
+        return
+    }
+
+    let reg = self.registry
+
+    stderr_write("WARNING: ")
+    stderr_write(error.to_string_in(reg.error_arena, reg).as_str())
+    stderr_write("\n")
+}
+
+fn Reporter::print_inspection(&self, inspect_info: InspectInfo) {
+    let source_loc = Reporter::loc_to_tmp_str!(inspect_info.loc)
+    let message = Reporter::json_str_escape(inspect_info.message).as_str()
+
+    if inspect_info.linked_loc != null {
+        if inspect_info.linked_loc.module_id != 0 {
+            let target_loc = Reporter::loc_to_tmp_str!(*inspect_info.linked_loc)
+            do stdout_write(it) with (
+                "{ ",
+                "\"type\": \"info\", ",
+                "\"link\": \"", \\ target_loc, \\ "\", ",
+                "\"hover\": \"", \\ message, \\ "\", ",
+                "\"loc\": \"", \\ source_loc, \\ "\" ",
+                "},\n",
+            )
+            return
+        }
+    }
+
+    do stdout_write(it) with (
+        "{ ",
+        "\"type\": \"info\", ",
+        "\"hover\": \"", \\ message, \\ "\", ",
+        "\"loc\": \"", \\ source_loc, \\ "\" ",
+        "},\n",
+    )
+}
+
+fn Reporter::print_include_info(
+    &self,
+    file_is_newly_added: bool,
+    module_id: u32,
+    loc: Loc,
+) {
+    if file_is_newly_added {
+        let file_path = self.registry.modules.get!(module_id).absolute_path.as_str()
+
+        do stdout_write(it) with (
+            "{ ",
+            "\"type\": \"file\", ",
+            "\"index\": ", \\ module_id.to_tmp_str!(), \\ ", ",
+            "\"path\": \"", \\ file_path, \\ "\" ",
+            "},\n",
+        )
+    }
+
+    if loc.module_id != 0 {
+        let source_loc = Reporter::loc_to_tmp_str!(loc)
+
+        do stdout_write(it) with (
+            "{ ",
+            "\"type\": \"info\", ",
+            "\"link\": \"", \\ module_id.to_tmp_str!(), \\ "/1:1-1:1\", ",
+            "\"loc\": \"", \\ source_loc, \\ "\" ",
+            "},\n",
+        )
+    }
+}
+
+fn Reporter::abort_due_to_compiler_bug(&self, message: str, loc: Loc) {
+    let alloc = self.registry.error_arena
+
+    let full_message = String::from_str_in(alloc, "Compiler bug: ")
+    full_message.push_str(message)
+
+    self.error(alloc.new!(Error { message: full_message, loc: loc }))
+    self.end_inspection()
+    wasi::proc_exit(1)
+}
+
+inline fn Reporter::loc_to_tmp_str!(loc: Loc): str {
+    let out = String::new_in(Alloc::STACK, 54)
+    defer out.free()
+
+    do out.push_str(it) with (
+        loc.module_id.to_tmp_str!(),
+        "/",
+        loc.pos.line.to_tmp_str!(),
+        ":",
+        loc.pos.col.to_tmp_str!(),
+        "-",
+        loc.end_pos.line.to_tmp_str!(),
+        ":",
+        loc.end_pos.col.to_tmp_str!(),
+    )
+
+    out.as_str()
+}
+
+// TODO(memory)?: check if this leaks memory
+fn Reporter::json_str_escape(value: String): String {
+    return value \
+        .replace("\\", "\\\\") \
+        .replace("\"", "\\\"") \
+        .replace("\n", "\\n")
+}
+
+// io
+
+fn stderr_writeln(message: str) {
+    stderr_write(message)
+    stderr_write("\n")
+}
+
+fn stderr_write(message: str) {
+    eprint(message)
+}
+
+let STDOUT_BUFFER = null as &?Vec(u8)
+inline let STDOUT_BUFFER_SIZE = 4096
+
+fn stdout_enable_buffering() {
+    STDOUT_BUFFER = Vec::with_capacity!<u8>(STDOUT_BUFFER_SIZE)
+}
+
+fn stdout_disable_buffering() {
+    if STDOUT_BUFFER != null {
+        if STDOUT_BUFFER.len != 0 {
+            let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
+        }
+    }
+
+    STDOUT_BUFFER.free()
+    STDOUT_BUFFER = null
+}
+
+fn stdout_writeln(message: str) {
+    stdout_write(message)
+    stdout_write("\n")
+}
+
+fn stdout_write(message: str) {
+    if STDOUT_BUFFER == null {
+        print(message)
+        return
+    }
+
+    if STDOUT_BUFFER.len + message.len > STDOUT_BUFFER_SIZE {
+        if STDOUT_BUFFER.len != 0 {
+            let _ = fprint_str(wasi::FD_STDOUT, STDOUT_BUFFER as &str)
+            STDOUT_BUFFER.len = 0
+        }
+    }
+
+    if message.len >= STDOUT_BUFFER_SIZE {
+        print(message)
+        return
+    }
+
+    STDOUT_BUFFER.push_all!(message.iter!())
+}
+
+// extra
+
+type VoidError = u32
+inline let VoidError::VALUE = 1 as &VoidError
+
+inline fn todo!(): never {
+    stderr_write(@inline_fn_call_loc())
+    stderr_write(" - not implemented\n")
+    @unreachable()
+}
+
+inline fn trace!(message: str) {
+    stderr_write(@inline_fn_call_loc())
+    stderr_write(" - ")
+    stderr_write(message)
+}
+
+inline fn traceln!(message: str) {
+    trace!(message)
+    stderr_write("\n")
+}

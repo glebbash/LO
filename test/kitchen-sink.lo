@@ -1,0 +1,145 @@
+// Kitchen sink: exercises a wide range of features at once.
+// Returns 0 when every check passes, otherwise the number of the failed check.
+// Made for test coverage, not really designed to showcase the language features.
+
+@use_memory(min_pages = 1)
+
+type Color = enum {
+    Red,
+    Green,
+    Blue,
+}
+
+type Reading = struct {
+    sensor_id: u8,
+    timestamp: u64,
+    delta: i64,
+}
+
+fn first_reading(): Reading {
+    return Reading { sensor_id: 1u8, timestamp: 1000u64, delta: -5i64 }
+}
+
+fn second_reading(): Reading {
+    return Reading { sensor_id: 2u8, timestamp: 2000u64, delta: 7i64 }
+}
+
+export fn main(): u32 {
+    if !check_integers() {
+        return 1
+    }
+    if !check_wide_integers() {
+        return 2
+    }
+    if !check_enums() {
+        return 3
+    }
+    if !check_pointers() {
+        return 4
+    }
+    if !check_inline_fns() {
+        return 5
+    }
+    if !check_intrinsics() {
+        return 6
+    }
+    return 0
+}
+
+fn check_integers(): bool {
+    // small integer types are widened by unary plus/minus
+    let small = 5u8
+    let negated = -small
+    if negated != -5i8 {
+        return false
+    }
+
+    // bitwise and shifts
+    let flags = 0xA | 0x5
+    flags &= 0x6
+    flags <<= 2
+    flags >>= 1
+    if flags != 12 {
+        return false
+    }
+
+    // compound assignments
+    let acc = 10
+    acc += 5
+    acc -= 3
+    acc *= 2
+    acc /= 4
+    acc %= 4
+    if acc != 2 {
+        return false
+    }
+
+    // piping feeds the previous result into `it`
+    let piped = 3 \
+        |> it + 2 \
+        |> double!(it) \
+        |> it.minus(4)
+    return piped == 6
+}
+
+fn u32::minus(self, other: u32): u32 {
+    return self - other
+}
+
+fn check_wide_integers(): bool {
+    let reading = first_reading()
+
+    // signed 64 bit math keeps the sign
+    let shifted = reading.delta >> 1i64
+    if shifted != -3i64 {
+        return false
+    }
+    if !(reading.delta < 0i64) {
+        return false
+    }
+
+    // unsigned 64 bit math
+    let elapsed = second_reading().timestamp - reading.timestamp
+    return elapsed == 1000u64 && elapsed > 999u64 && elapsed <= 1000u64
+}
+
+fn check_enums(): bool {
+    let color = Color::Green
+    if color == Color::Red {
+        return false
+    }
+    return color != Color::Blue && color == Color::Green
+}
+
+fn check_pointers(): bool {
+    let slot = 64 as &Reading
+    *slot = Reading { sensor_id: 3u8, timestamp: 1u64, delta: 0i64 }
+
+    // taking a reference to a struct field and writing through it
+    let id_ref = &slot.sensor_id
+    *id_ref = (*id_ref) + 4u8
+
+    return slot.sensor_id == 7u8
+}
+
+inline fn double!(value: infer(T)): T {
+    value + value
+}
+
+fn check_inline_fns(): bool {
+    return double!(21) == 42 && double!(-3i64) == -6i64
+}
+
+fn check_intrinsics(): bool {
+    let pages = @memory_size()
+    if @memory_grow(1) != pages {
+        return false
+    }
+
+    // copy a reading to a new place in memory and compare
+    let src = 64 as &Reading
+    let dst = 128 as &Reading
+    *src = second_reading()
+    @memory_copy(128, 64, sizeof Reading)
+    return dst.sensor_id == 2u8 && dst.timestamp == 2000u64
+}

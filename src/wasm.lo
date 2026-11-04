@@ -1,0 +1,852 @@
+@include("./common.lo")
+
+type WasmModule = struct {
+    arena: &Arena,
+
+    types: &Vec(WasmFnType),
+    imports: &Vec(WasmImport),
+    functions: &Vec(u32),
+    tables: &Vec(WasmTable),
+    memories: &Vec(WasmLimits),
+    globals: &Vec(WasmGlobal),
+    exports: &Vec(WasmExport),
+    codes: &Vec(WasmFn),
+    datas: &Vec(WasmData),
+
+    // debug info
+    function_names: &Vec(WasmFnNameItem),
+    local_names: &Vec(WasmLocalNameItem),
+}
+
+type WasmFnType = struct {
+    inputs: &Vec(WasmType),
+    outputs: &Vec(WasmType),
+}
+
+fn WasmFnType::equals(self, other: WasmFnType): bool {
+    if self.inputs.len != other.inputs.len {
+        return false
+    }
+
+    if self.outputs.len != other.outputs.len {
+        return false
+    }
+
+    for i in 0..self.inputs.len {
+        if self.inputs.get!(i) != other.inputs.get!(i) {
+            return false
+        }
+    }
+
+    for i in 0..self.outputs.len {
+        if self.outputs.get!(i) != other.outputs.get!(i) {
+            return false
+        }
+    }
+
+    return true
+}
+
+type WasmType = enum {
+    I32 = 0x7F,
+    I64 = 0x7E,
+    F32 = 0x7D,
+    F64 = 0x7C,
+}
+
+type WasmBlockKind = enum {
+    Block = 0x02,
+    Loop = 0x03,
+    If = 0x04,
+}
+
+type WasmBlockTypeSingleOut = struct {
+    out_type: WasmType,
+}
+
+type WasmBlockTypeInOut = struct {
+    type_index: u32,
+}
+
+type WasmBlockType = enum (&void) {
+    NoOut,
+    SingleOut(&WasmBlockTypeSingleOut),
+    InOut(&WasmBlockTypeInOut),
+}
+
+type WasmImport = struct {
+    module_name: String,
+    item_name: String,
+    item_desc: WasmImportDesc,
+}
+
+type WasmImportDesc = enum (&void) {
+    Func(&WasmImportDescFn),
+    Memory(&WasmLimits),
+}
+
+type WasmImportDescFn = struct {
+    type_index: u32,
+}
+
+type WasmTable = struct {
+    limits: WasmLimits,
+}
+
+type WasmFn = struct {
+    locals: &Vec(WasmLocals),
+    expr: WasmExpr,
+}
+
+type WasmLocals = struct {
+    count: u32,
+    value_type: WasmType,
+}
+
+type WasmExpr = struct {
+    instrs: &Vec(WasmInstr),
+}
+
+type WasmInstr = enum (&void) {
+    Unreachable,
+    MemorySize,
+    MemoryGrow,
+    MemoryCopy,
+    I32Const(&WasmInstrI32Const),
+    I64Const(&WasmInstrI64Const),
+    Return,
+    UnaryOp(&WasmInstrUnaryOp),
+    BinaryOp(&WasmInstrBinaryOp),
+    LocalGet(&WasmInstrLocalGet),
+    LocalSet(&WasmInstrLocalSet),
+    GlobalGet(&WasmInstrGlobalGet),
+    GlobalSet(&WasmInstrGlobalSet),
+    Load(&WasmInstrLoad),
+    Store(&WasmInstrStore),
+    BlockStart(&WasmInstrBlockStart),
+    Else,
+    BlockEnd,
+    Branch(&WasmInstrBranch),
+    BranchIf(&WasmInstrBranchIf),
+    Call(&WasmInstrCall),
+    Drop,
+    I32WrapI64,
+    I64ExtendI32s,
+    I64ExtendI32u,
+}
+
+type WasmInstrLocalGet = struct {
+    local_index: u32,
+}
+
+type WasmInstrLocalSet = struct {
+    local_index: u32,
+}
+
+type WasmInstrGlobalGet = struct {
+    global_index: u32,
+}
+
+type WasmInstrGlobalSet = struct {
+    global_index: u32,
+}
+
+type WasmInstrLoad = struct {
+    kind: WasmLoadKind,
+    align: u32,
+    offset: u32,
+}
+
+type WasmInstrStore = struct {
+    kind: WasmStoreKind,
+    align: u32,
+    offset: u32,
+}
+
+type WasmInstrI32Const = struct {
+    value: i32,
+}
+
+type WasmInstrI64Const = struct {
+    value: i64,
+}
+
+type WasmInstrBlockStart = struct {
+    block_kind: WasmBlockKind,
+    block_type: WasmBlockType,
+}
+
+type WasmInstrUnaryOp = struct {
+    kind: WasmUnaryOpKind,
+}
+
+type WasmInstrBinaryOp = struct {
+    kind: WasmBinaryOpKind,
+}
+
+type WasmInstrBranch = struct {
+    label_index: u32,
+}
+
+type WasmInstrBranchIf = struct {
+    label_index: u32,
+}
+
+type WasmInstrCall = struct {
+    fn_index: u32,
+}
+
+type WasmUnaryOpKind = enum {
+    I32_EQZ = 0x45,
+    I64_EQZ = 0x50,
+    F32_NEG = 0x8C,
+    F64_NEG = 0x9A,
+}
+
+type WasmBinaryOpKind = enum {
+    I32_EQ = 0x46,
+    I32_NE = 0x47,
+    I32_LT_S = 0x48,
+    I32_LT_U = 0x49,
+    I32_GT_S = 0x4A,
+    I32_GT_U = 0x4B,
+    I32_LE_S = 0x4C,
+    I32_LE_U = 0x4D,
+    I32_GE_S = 0x4E,
+    I32_GE_U = 0x4F,
+
+    I64_EQ = 0x51,
+    I64_NE = 0x52,
+    I64_LT_S = 0x53,
+    I64_LT_U = 0x54,
+    I64_GT_S = 0x55,
+    I64_GT_U = 0x56,
+    I64_LE_S = 0x57,
+    I64_LE_U = 0x58,
+    I64_GE_S = 0x59,
+    I64_GE_U = 0x5A,
+
+    F32_EQ = 0x5B,
+    F32_NE = 0x5C,
+    F32_LT = 0x5D,
+    F32_GT = 0x5E,
+    F32_LE = 0x5F,
+    F32_GE = 0x60,
+
+    F64_EQ = 0x61,
+    F64_NE = 0x62,
+    F64_LT = 0x63,
+    F64_GT = 0x64,
+    F64_LE = 0x65,
+    F64_GE = 0x66,
+
+    I32_ADD = 0x6A,
+    I32_SUB = 0x6B,
+    I32_MUL = 0x6C,
+    I32_DIV_S = 0x6D,
+    I32_DIV_U = 0x6E,
+    I32_REM_S = 0x6F,
+    I32_REM_U = 0x70,
+    I32_AND = 0x71,
+    I32_OR = 0x72,
+    I32_SHL = 0x74,
+    I32_SHR_S = 0x75,
+    I32_SHR_U = 0x76,
+
+    I64_ADD = 0x7C,
+    I64_SUB = 0x7D,
+    I64_MUL = 0x7E,
+    I64_DIV_S = 0x7F,
+    I64_DIV_U = 0x80,
+    I64_REM_S = 0x81,
+    I64_REM_U = 0x82,
+    I64_AND = 0x83,
+    I64_OR = 0x84,
+    I64_SHL = 0x86,
+    I64_SHR_S = 0x87,
+    I64_SHR_U = 0x88,
+
+    F32_ADD = 0x92,
+    F32_SUB = 0x93,
+    F32_MUL = 0x94,
+    F32_DIV = 0x95,
+
+    F64_ADD = 0xA0,
+    F64_SUB = 0xA1,
+    F64_MUL = 0xA2,
+    F64_DIV = 0xA3,
+}
+
+type WasmLoadKind = enum {
+    I32 = 0x28,
+    I64 = 0x29,
+    F32 = 0x2A,
+    F64 = 0x2B,
+    I32I8 = 0x2C,
+    I32U8 = 0x2D,
+    I32I16 = 0x2E,
+    I32U16 = 0x2F,
+}
+
+type WasmStoreKind = enum {
+    I32 = 0x36,
+    I64 = 0x37,
+    F32 = 0x38,
+    F64 = 0x39,
+    I32_8 = 0x3A,
+    I32_16 = 0x3B,
+}
+
+type WasmLimits = struct {
+    min: u32,
+    max: &?u32,
+}
+
+type WasmGlobal = struct {
+    mutable: bool,
+    value_type: WasmType,
+    initial_value: WasmExpr,
+}
+
+type WasmExport = struct {
+    export_type: WasmExportType,
+    export_name: String,
+    exported_item_index: u32,
+}
+
+type WasmExportType = enum {
+    Func = 0x00,
+    Mem = 0x02,
+}
+
+type WasmData = enum (&void) {
+    Active(&WasmDataActive),
+}
+
+type WasmDataActive = struct {
+    offset: WasmExpr,
+    bytes: &Vec(u8),
+}
+
+type WasmFnNameItem = struct {
+    fn_index: u32,
+    fn_name: String,
+}
+
+type WasmLocalNameItem = struct {
+    fn_index: u32,
+    locals: &Vec(WasmLocalInfo),
+}
+
+type WasmLocalInfo = struct {
+    local_index: u32,
+    local_name: String,
+}
+
+fn WasmModule::new(): &WasmModule {
+    return heap::new!(WasmModule {
+        arena: Arena::new(1024),
+        types: Vec::new!<WasmFnType>(),
+        imports: Vec::new!<WasmImport>(),
+        functions: Vec::new!<u32>(),
+        tables: Vec::new!<WasmTable>(),
+        memories: Vec::new!<WasmLimits>(),
+        globals: Vec::new!<WasmGlobal>(),
+        exports: Vec::new!<WasmExport>(),
+        codes: Vec::new!<WasmFn>(),
+        datas: Vec::new!<WasmData>(),
+        function_names: Vec::new!<WasmFnNameItem>(),
+        local_names: Vec::new!<WasmLocalNameItem>(),
+    })
+}
+
+fn WasmModule::dump(&self, output: &Vec(u8)) {
+    let section_buffer = Vec::new!<u8>()
+    defer section_buffer.free()
+
+    WasmModule::write_all(output, "\0asm".iter!()) // wasm magic number
+    WasmModule::write_all(output, [u8][0x01u8, 0x00u8, 0x00u8, 0x00u8]) // version
+
+    self.write_type_section(output, section_buffer)
+
+    self.write_import_section(output, section_buffer)
+
+    self.write_function_section(output, section_buffer)
+
+    self.write_memory_section(output, section_buffer)
+
+    self.write_global_section(output, section_buffer)
+
+    self.write_export_section(output, section_buffer)
+
+    self.write_code_section(output, section_buffer)
+
+    self.write_data_section(output, section_buffer)
+
+    self.write_names_custom_section(output, section_buffer)
+}
+
+fn WasmModule::write_type_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.types.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.types.len)
+    for fn_type in self.types.iter!() {
+        WasmModule::write_u8(section, 0x60u8) // func type
+
+        WasmModule::write_u32(section, fn_type.inputs.len)
+        for fn_input in fn_type.inputs.iter!() {
+            WasmModule::write_u8(section, fn_input as u8)
+        }
+
+        WasmModule::write_u32(section, fn_type.outputs.len)
+        for fn_output in fn_type.outputs.iter!() {
+            WasmModule::write_u8(section, fn_output as u8)
+        }
+    }
+
+    WasmModule::write_section(output, section, 0x01u8)
+}
+
+fn WasmModule::write_import_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.imports.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.imports.len)
+    for import in self.imports.iter!() {
+        WasmModule::write_u32(section, import.module_name.len())
+        WasmModule::write_all(section, import.module_name.as_str().iter!())
+
+        WasmModule::write_u32(section, import.item_name.len())
+        WasmModule::write_all(section, import.item_name.as_str().iter!())
+
+        if match WasmImportDesc::Func(fn_desc) = import.item_desc {
+            WasmModule::write_u8(section, 0x00u8) // fn
+            WasmModule::write_u32(section, fn_desc.type_index)
+        } else if match WasmImportDesc::Memory(memory) = import.item_desc {
+            WasmModule::write_u8(section, 0x02u8) // memory
+            WasmModule::write_limits(section, *memory)
+        } else {
+            @unreachable()
+        }
+    }
+
+    WasmModule::write_section(output, section, 0x02u8)
+}
+
+fn WasmModule::write_function_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.functions.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.functions.len)
+    for type_index in self.functions.iter!() {
+        WasmModule::write_u32(section, type_index)
+    }
+
+    WasmModule::write_section(output, section, 0x03u8)
+}
+
+fn WasmModule::write_memory_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.memories.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.memories.len)
+    for memory in self.memories.iter!() {
+        WasmModule::write_limits(section, memory)
+    }
+
+    WasmModule::write_section(output, section, 0x05u8)
+}
+
+fn WasmModule::write_global_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.globals.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.globals.len)
+    for &global in self.globals.iter!() {
+        WasmModule::write_u8(section, global.value_type as u8)
+
+        if global.mutable {
+            WasmModule::write_u8(section, 0x01u8)
+        } else {
+            WasmModule::write_u8(section, 0x00u8)
+        }
+
+        WasmModule::write_expr(section, global.initial_value)
+    }
+
+    WasmModule::write_section(output, section, 0x06u8)
+}
+
+fn WasmModule::write_export_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.exports.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.exports.len)
+    for export_ in self.exports.iter!() {
+        WasmModule::write_u32(section, export_.export_name.len())
+        WasmModule::write_all(section, export_.export_name.as_str().iter!())
+
+        WasmModule::write_u8(section, export_.export_type as u8)
+
+        WasmModule::write_u32(section, export_.exported_item_index)
+    }
+
+    WasmModule::write_section(output, section, 0x07u8)
+}
+
+fn WasmModule::write_code_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.codes.len == 0 {
+        return
+    }
+
+    let fn_section = Vec::new!<u8>()
+
+    WasmModule::write_u32(section, self.codes.len as u32)
+    for fn_code in self.codes.iter!() {
+        WasmModule::write_u32(fn_section, fn_code.locals.len as u32)
+        for locals_of_some_type in fn_code.locals.iter!() {
+            WasmModule::write_u32(fn_section, locals_of_some_type.count as u32)
+            WasmModule::write_u8(
+                fn_section,
+                locals_of_some_type.value_type as u8,
+            )
+        }
+        WasmModule::write_expr(fn_section, fn_code.expr)
+
+        WasmModule::write_u32(section, fn_section.len as u32)
+        section.append!(fn_section)
+    }
+
+    WasmModule::write_section(output, section, 0x0Au8)
+}
+
+fn WasmModule::write_data_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.datas.len == 0 {
+        return
+    }
+
+    WasmModule::write_u32(section, self.datas.len)
+    for data in self.datas.iter!() {
+        match WasmData::Active(active) = data else {
+            @unreachable()
+        }
+
+        WasmModule::write_u32(section, 0)
+        WasmModule::write_expr(section, active.offset)
+        WasmModule::write_u32(section, active.bytes.len)
+        WasmModule::write_all(section, active.bytes.iter!())
+    }
+
+    WasmModule::write_section(output, section, 0x0Bu8)
+}
+
+fn WasmModule::write_names_custom_section(
+    &self,
+    output: &Vec(u8),
+    section: &Vec(u8),
+) {
+    if self.function_names.len == 0 && self.local_names.len == 0 {
+        return
+    }
+
+    let section_name = "name"
+    WasmModule::write_u32(section, section_name.len)
+    WasmModule::write_all(section, section_name.iter!())
+
+    // function names:
+    if true {
+        let subsection = Vec::new!<u8>()
+        WasmModule::write_u32(subsection, self.function_names.len)
+        for fn_info in self.function_names.iter!() {
+            WasmModule::write_u32(subsection, fn_info.fn_index)
+            WasmModule::write_u32(subsection, fn_info.fn_name.len())
+            WasmModule::write_all(subsection, fn_info.fn_name.as_str().iter!())
+        }
+        WasmModule::write_section(section, subsection, 1u8)
+    }
+
+    // local names:
+    if true {
+        let subsection = Vec::new!<u8>()
+        WasmModule::write_u32(subsection, self.local_names.len)
+        for fn_info in self.local_names.iter!() {
+            WasmModule::write_u32(subsection, fn_info.fn_index)
+
+            WasmModule::write_u32(subsection, fn_info.locals.len)
+            for local_info in fn_info.locals.iter!() {
+                WasmModule::write_u32(subsection, local_info.local_index)
+                WasmModule::write_u32(subsection, local_info.local_name.len())
+                WasmModule::write_all(subsection, local_info.local_name.as_str().iter!())
+            }
+        }
+        WasmModule::write_section(section, subsection, 2u8)
+    }
+
+    WasmModule::write_section(output, section, 0x00u8)
+}
+
+fn WasmModule::write_section(out: &Vec(u8), section: &Vec(u8), section_code: u8) {
+    WasmModule::write_u8(out, section_code)
+    WasmModule::write_u32(out, section.len as u32)
+    out.append!(section)
+}
+
+fn WasmModule::write_expr(out: &Vec(u8), expr: WasmExpr) {
+    for instr in expr.instrs.iter!() {
+        WasmModule::write_instr(out, instr)
+    }
+
+    WasmModule::write_u8(out, 0x0Bu8) // end
+}
+
+fn WasmModule::write_instr(out: &Vec(u8), instr: WasmInstr) {
+    if match WasmInstr::Unreachable(_) = instr {
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::MemorySize(_) = instr {
+        WasmModule::write_u8(out, 0x3Fu8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::MemoryGrow(_) = instr {
+        WasmModule::write_u8(out, 0x40u8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::MemoryCopy(_) = instr {
+        WasmModule::write_u8(out, 0xFCu8)
+        WasmModule::write_u32(out, 10)
+        WasmModule::write_u8(out, 0x00u8)
+        WasmModule::write_u8(out, 0x00u8)
+        return
+    }
+
+    if match WasmInstr::Return(_) = instr {
+        WasmModule::write_u8(out, 0x0Fu8)
+        return
+    }
+
+    if match WasmInstr::Call(call) = instr {
+        WasmModule::write_u8(out, 0x10u8)
+        WasmModule::write_u32(out, call.fn_index)
+        return
+    }
+
+    if match WasmInstr::Drop(_) = instr {
+        WasmModule::write_u8(out, 0x1Au8)
+        return
+    }
+
+    if match WasmInstr::BinaryOp(binary_op) = instr {
+        WasmModule::write_u8(out, binary_op.kind as u8)
+        return
+    }
+
+    if match WasmInstr::LocalGet(local_get) = instr {
+        WasmModule::write_u8(out, 0x20u8)
+        WasmModule::write_u32(out, local_get.local_index)
+        return
+    }
+
+    if match WasmInstr::LocalSet(local_set) = instr {
+        WasmModule::write_u8(out, 0x21u8)
+        WasmModule::write_u32(out, local_set.local_index)
+        return
+    }
+
+    if match WasmInstr::GlobalGet(global_get) = instr {
+        WasmModule::write_u8(out, 0x23u8)
+        WasmModule::write_u32(out, global_get.global_index)
+        return
+    }
+
+    if match WasmInstr::GlobalSet(global_set) = instr {
+        WasmModule::write_u8(out, 0x24u8)
+        WasmModule::write_u32(out, global_set.global_index)
+        return
+    }
+
+    if match WasmInstr::I32Const(i32_const) = instr {
+        WasmModule::write_u8(out, 0x41u8)
+        WasmModule::write_i32(out, i32_const.value)
+        return
+    }
+
+    if match WasmInstr::I64Const(i64_const) = instr {
+        WasmModule::write_u8(out, 0x42u8)
+        WasmModule::write_i64(out, i64_const.value)
+        return
+    }
+
+    if match WasmInstr::Load(load) = instr {
+        WasmModule::write_u8(out, load.kind as u8)
+        WasmModule::write_u32(out, load.align)
+        WasmModule::write_u32(out, load.offset)
+        return
+    }
+
+    if match WasmInstr::Store(store) = instr {
+        WasmModule::write_u8(out, store.kind as u8)
+        WasmModule::write_u32(out, store.align)
+        WasmModule::write_u32(out, store.offset)
+        return
+    }
+
+    if match WasmInstr::BlockStart(block_start) = instr {
+        WasmModule::write_u8(out, block_start.block_kind as u8)
+        if match WasmBlockType::NoOut(_) = block_start.block_type {
+            WasmModule::write_u8(out, 0x40u8)
+            return
+        }
+        if match WasmBlockType::SingleOut(single_out) = block_start.block_type {
+            WasmModule::write_u8(out, single_out.out_type as u8)
+            return
+        }
+        if match WasmBlockType::InOut(in_out) = block_start.block_type {
+            WasmModule::write_i32(out, in_out.type_index as i32)
+            return
+        }
+        return
+    }
+
+    if match WasmInstr::Else(_) = instr {
+        WasmModule::write_u8(out, 0x05u8)
+        return
+    }
+
+    if match WasmInstr::BlockEnd(_) = instr {
+        WasmModule::write_u8(out, 0x0Bu8)
+        return
+    }
+
+    if match WasmInstr::Branch(branch) = instr {
+        WasmModule::write_u8(out, 0x0Cu8)
+        WasmModule::write_u32(out, branch.label_index)
+        return
+    }
+
+    if match WasmInstr::BranchIf(branch_if) = instr {
+        WasmModule::write_u8(out, 0x0Du8)
+        WasmModule::write_u32(out, branch_if.label_index)
+        return
+    }
+
+    if match WasmInstr::UnaryOp(unary_op) = instr {
+        WasmModule::write_u8(out, unary_op.kind as u8)
+        return
+    }
+
+    if match WasmInstr::I32WrapI64(_) = instr {
+        WasmModule::write_u8(out, 0xA7u8)
+        return
+    }
+
+    if match WasmInstr::I64ExtendI32s(_) = instr {
+        WasmModule::write_u8(out, 0xACu8)
+        return
+    }
+
+    if match WasmInstr::I64ExtendI32u(_) = instr {
+        WasmModule::write_u8(out, 0xADu8)
+        return
+    }
+
+    todo!()
+}
+
+fn WasmModule::write_limits(out: &Vec(u8), limits: WasmLimits) {
+    if limits.max != null {
+        WasmModule::write_u8(out, 0x01u8)
+        WasmModule::write_u32(out, limits.min)
+        WasmModule::write_u32(out, *limits.max)
+    } else {
+        WasmModule::write_u8(out, 0x00u8)
+        WasmModule::write_u32(out, limits.min)
+    }
+}
+
+fn WasmModule::write_u8(out: &Vec(u8), value: u8) {
+    out.push!(value)
+}
+
+fn WasmModule::write_u32(out: &Vec(u8), value: u32) {
+    WasmModule::leb128_write_unsigned(out, value as u64)
+}
+
+fn WasmModule::write_i32(out: &Vec(u8), value: i32) {
+    WasmModule::leb128_write_signed(out, value as i64)
+}
+
+fn WasmModule::write_i64(out: &Vec(u8), value: i64) {
+    WasmModule::leb128_write_signed(out, value)
+}
+
+fn WasmModule::write_all(out: &Vec(u8), value: seg(u8)) {
+    out.push_all!(value)
+}
+
+// LEB128
+
+inline let CONTINUATION_BIT = (1 << 7) as u8
+inline let CONTINUATION_BIT_INV = 0xFF as u8 - CONTINUATION_BIT
+
+fn WasmModule::leb128_write_signed(output: &Vec(u8), val: i64) {
+    while val != 0i64 && val != -1i64 {
+        let byte = (val as u8) & CONTINUATION_BIT_INV
+        val >>= 7i64
+        output.push!(byte | CONTINUATION_BIT)
+    }
+    output.push!((val as u8) & CONTINUATION_BIT_INV)
+}
+
+fn WasmModule::leb128_write_unsigned(output: &Vec(u8), val: u64) {
+    while val > 0u64 {
+        let byte = (val as u8) & CONTINUATION_BIT_INV
+        val >>= 7u64
+        output.push!(byte | CONTINUATION_BIT)
+    }
+    output.push!((val as u8) & CONTINUATION_BIT_INV)
+}

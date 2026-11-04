@@ -1,0 +1,4 @@
+fn main() {
+    // error
+    @unreachable(1)
+}

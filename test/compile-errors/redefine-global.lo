@@ -1,0 +1,6 @@
+let limit = 1
+
+// error
+let limit = 2
+
+fn main() {}

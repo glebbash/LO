@@ -1,0 +1,4 @@
+fn main() {
+    // error
+    let _ = [u32][1, true, 3]
+}

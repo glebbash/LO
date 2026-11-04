@@ -1,0 +1,722 @@
+@include("./common.lo")
+@include("./lexer.lo")
+
+// TODO(memory): impl proper cleanup for all &Vec fields here
+
+type ExprId = u32
+
+type TopLevelExpr = enum (&void) {
+    Let(&LetExpr),
+    Fn(&FnExpr),
+    TypeDef(&TypeDefExpr),
+    Intrinsic(&InlineFnCallExpr),
+}
+
+type IdentExpr = struct {
+    id: u32,
+    repr: str,
+    parts: &Vec(Loc),
+    loc: Loc,
+}
+
+type FnDeclExpr = struct {
+    fn_name: IdentExpr,
+    type_params: &Vec(str),
+    params: &Vec(FnParam),
+    params_trailing_comma: bool,
+    return_type: &?TypeExpr,
+    loc: Loc,
+}
+
+type FnExpr = struct {
+    id: u32,
+    exported: bool,
+    is_inline: bool,
+    decl: FnDeclExpr,
+    value: FnExprValue,
+    loc: Loc,
+}
+
+type FnExprValue = enum (&void) {
+    Body(&CodeBlock),
+    ImportFrom(&QuotedString),
+}
+
+type FnParam = struct {
+    param_name: IdentExpr,
+    param_type: FnParamType,
+    loc: Loc,
+}
+
+type FnParamType = enum (&void) {
+    Self,
+    SelfRef,
+    Type(&FnParamTypeType),
+    Infer(&FnParamTypeInfer),
+}
+
+type FnParamTypeType = struct {
+    expr: TypeExpr,
+}
+
+type FnParamTypeInfer = struct {
+    name: str,
+}
+
+type LetExpr = struct {
+    id: u32,
+    is_inline: bool,
+    name: IdentExpr,
+    value: CodeExpr,
+    loc: Loc,
+}
+
+type TypeDefExpr = struct {
+    name: IdentExpr,
+    value: TypeDefValue,
+    loc: Loc,
+}
+
+type TypeDefValue = enum (&void) {
+    Struct(&TypeDefValueStruct),
+    Enum(&TypeDefValueEnum),
+    Alias(&TypeExpr),
+}
+
+type TypeDefValueStruct = struct {
+    fields: &Vec(StructDefField),
+}
+
+type StructDefField = struct {
+    field_name: IdentExpr,
+    field_type: TypeExpr,
+    loc: Loc,
+}
+
+type TypeDefValueEnum = struct {
+    variant_type: &?TypeExpr,
+    variants: &Vec(EnumDefVariant),
+}
+
+type EnumDefVariant = struct {
+    variant_name: IdentExpr,
+    variant_type: &?TypeExpr,
+    variant_tag_value: &?IntLiteralExpr,
+    loc: Loc,
+}
+
+type CodeExprMap = struct {
+    fields: &Vec(CodeExprMapField),
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+type CodeBlock = struct {
+    exprs: &Vec(CodeExpr),
+    block_expr_id: u32,
+    expr_id_count: u32,
+    loc: Loc,
+}
+
+fn TopLevelExpr::loc(self): Loc {
+    if match TopLevelExpr::Fn(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::Let(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::TypeDef(e) = self {
+        return e.loc
+    }
+    if match TopLevelExpr::Intrinsic(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}
+
+type TypeExpr = enum (&void) {
+    Named(&IdentExpr),
+    Pointer(&TypeExprPointer),
+    Container(&TypeExprContainer),
+}
+
+fn TypeExpr::id(self): u32 {
+    if match TypeExpr::Named(e) = self {
+        return e.id
+    }
+    if match TypeExpr::Pointer(e) = self {
+        return e.id
+    }
+    if match TypeExpr::Container(e) = self {
+        return e.id
+    }
+    @unreachable()
+}
+
+fn TypeExpr::loc(self): Loc {
+    if match TypeExpr::Named(e) = self {
+        return e.loc
+    }
+    if match TypeExpr::Pointer(e) = self {
+        return e.loc
+    }
+    if match TypeExpr::Container(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}
+
+type TypeExprPointer = struct {
+    id: u32,
+    pointee: TypeExpr,
+    is_sequence: bool,
+    is_nullable: bool,
+    loc: Loc,
+}
+
+type TypeExprContainer = struct {
+    id: u32,
+    container: TypeExpr, // TODO!!!!: change this to ident expr
+    items: &Vec(TypeExpr),
+    loc: Loc,
+}
+
+type CodeExpr = enum (&void) {
+    // literals
+    BoolLiteral(&BoolLiteralExpr),
+    CharLiteral(&CharLiteralExpr),
+    NullLiteral(&NullLiteralExpr),
+    IntLiteral(&IntLiteralExpr),
+    StringLiteral(&StringLiteralExpr),
+    StructLiteral(&StructLiteralExpr),
+    ArrayLiteral(&ArrayLiteralExpr),
+    ResultLiteral(&ResultLiteralExpr),
+
+    // variables
+    Ident(&IdentExpr),
+    Let(&LetExpr),
+    Fn(&FnExpr),
+
+    // operations
+    InfixOp(&InfixOpExpr),
+    PrefixOp(&PrefixOpExpr),
+    Cast(&CastExpr),
+    Assign(&AssignExpr),
+    FieldAccess(&FieldAccessExpr),
+    PropagateError(&PropagateErrorExpr),
+    FnCall(&FnCallExpr),
+    MethodCall(&MethodCallExpr),
+    InlineFnCall(&InlineFnCallExpr),
+    InlineMethodCall(&InlineMethodCallExpr),
+    IntrinsicCall(&InlineFnCallExpr),
+
+    // control flow
+    Return(&ReturnExpr),
+    If(&IfExpr),
+    While(&WhileExpr),
+    For(&ForExpr),
+    Break(&BreakExpr),
+    Continue(&ContinueExpr),
+    Defer(&DeferExpr),
+    Catch(&CatchExpr),
+    Match(&MatchExpr),
+
+    // other
+    Paren(&ParenExpr),
+    DoWith(&DoWithExpr),
+    Pipe(&PipeExpr),
+    Sizeof(&SizeofExpr),
+}
+
+type BoolLiteralExpr = struct {
+    id: u32,
+    value: bool,
+    loc: Loc,
+}
+
+type CharLiteralExpr = struct {
+    id: u32,
+    repr: str,
+    value: u32,
+    loc: Loc,
+}
+
+type NullLiteralExpr = struct {
+    id: u32,
+    loc: Loc,
+}
+
+type IntLiteralExpr = struct {
+    id: u32,
+    repr: str,
+    value: i64,
+    tag: &?str,
+    loc: Loc,
+}
+
+type StringLiteralExpr = struct {
+    id: u32,
+    repr: str,
+    value: String,
+    loc: Loc,
+}
+
+type ReturnExpr = struct {
+    id: u32,
+    expr: &?CodeExpr,
+    loc: Loc,
+}
+
+type InfixOpExpr = struct {
+    id: u32,
+    op_tag: InfixOpTag,
+    op_loc: Loc,
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    loc: Loc,
+}
+
+type PrefixOpExpr = struct {
+    id: u32,
+    op_tag: PrefixOpTag,
+    expr: CodeExpr,
+    op_loc: Loc,
+    loc: Loc,
+}
+
+type IfExpr = struct {
+    id: u32,
+    cond: IfCond,
+    then_block: CodeBlock,
+    else_block: ElseBlock,
+    loc: Loc,
+}
+
+type IfCond = enum (&void) {
+    Expr(&CodeExpr),
+    Match(&MatchHeader),
+}
+
+type MatchHeader = struct {
+    variant_name: IdentExpr,
+    variant_bind: IdentExpr,
+    expr_to_match: CodeExpr,
+}
+
+type ElseBlock = enum (&void) {
+    None(&void),
+    Else(&CodeBlock),
+    ElseIf(&CodeExpr),
+}
+
+type WhileExpr = struct {
+    id: u32,
+    cond: &?CodeExpr,
+    body: CodeBlock,
+    loc: Loc,
+}
+
+type BreakExpr = struct {
+    id: u32,
+    loc: Loc,
+}
+
+type ForExprIterator = enum (&void) {
+    Range(&ForExprIteratorRange),
+    Segment(&ForExprIteratorSegment),
+}
+type ForExprIteratorRange = struct {
+    start: CodeExpr,
+    end: CodeExpr,
+}
+type ForExprIteratorSegment = struct {
+    expr: CodeExpr,
+}
+
+type ForExpr = struct {
+    id: u32,
+    item: IdentExpr,
+    iterator: ForExprIterator,
+    ref_only: bool,
+    body: CodeBlock,
+    loc: Loc,
+}
+
+type ContinueExpr = struct {
+    id: u32,
+    loc: Loc,
+}
+
+type CodeExprList = struct {
+    items: &Vec(CodeExpr),
+    has_trailing_comma: bool,
+}
+
+type DoWithExpr = struct {
+    id: u32,
+    body: CodeExpr,
+    args: CodeExprList,
+    with_loc: Loc,
+    bind_id: u32,
+    loc: Loc,
+}
+
+type PipeExpr = struct {
+    id: u32,
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    bind_id: u32,
+    op_loc: Loc,
+    loc: Loc,
+}
+
+type DeferExpr = struct {
+    id: u32,
+    expr: CodeExpr,
+    loc: Loc,
+}
+
+type CastExpr = struct {
+    id: u32,
+    expr: CodeExpr,
+    casted_to: TypeExpr,
+    loc: Loc,
+}
+
+type StructLiteralExpr = struct {
+    id: u32,
+    struct_name: IdentExpr,
+    body: CodeExprMap,
+    loc: Loc,
+}
+
+type ArrayLiteralExpr = struct {
+    id: u32,
+    item_type: TypeExpr,
+    items: &Vec(CodeExpr),
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+type ResultLiteralExpr = struct {
+    id: u32,
+    is_ok: bool,
+    result_type: &?ResultTypeExpr,
+    value: &?CodeExpr,
+    loc: Loc,
+}
+
+type ResultTypeExpr = struct {
+    ok: TypeExpr,
+    err: TypeExpr,
+}
+
+type CodeExprMapField = struct {
+    key: str,
+    value: CodeExpr,
+    key_loc: Loc,
+}
+
+type AssignExpr = struct {
+    id: u32,
+    op_loc: Loc,
+    lhs: CodeExpr,
+    rhs: CodeExpr,
+    loc: Loc,
+}
+
+type FieldAccessExpr = struct {
+    id: u32,
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    loc: Loc,
+}
+
+type CatchExpr = struct {
+    id: u32,
+    lhs: CodeExpr,
+    ok_bind_id: u32,
+    error_bind: IdentExpr,
+    catch_body: CodeBlock,
+    catch_loc: Loc,
+    loc: Loc,
+}
+
+type MatchExpr = struct {
+    id: u32,
+    header: MatchHeader,
+    else_branch: CodeBlock,
+    loc: Loc,
+}
+
+type PropagateErrorExpr = struct {
+    id: u32,
+    expr: CodeExpr,
+    ok_bind_id: u32,
+    err_bind_id: u32,
+    loc: Loc,
+}
+
+type ParenExpr = struct {
+    id: u32,
+    expr: CodeExpr,
+    has_trailing_comma: bool,
+    loc: Loc,
+}
+
+type FnCallExpr = struct {
+    id: u32,
+    fn_name: IdentExpr,
+    args: CodeExprList,
+    loc: Loc,
+}
+
+type MethodCallExpr = struct {
+    id: u32,
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    args: CodeExprList,
+    loc: Loc,
+}
+
+type InlineFnCallExpr = struct {
+    id: u32,
+    extra_id: u32, // NOTE: used for `inline_fn_call_loc` only
+    fn_name: IdentExpr,
+    type_args: &Vec(TypeExpr),
+    args: CodeExprList,
+    loc: Loc,
+}
+
+type InlineMethodCallExpr = struct {
+    id: u32,
+    lhs: CodeExpr,
+    field_name: IdentExpr,
+    type_args: &Vec(TypeExpr),
+    args: CodeExprList,
+    loc: Loc,
+}
+
+type SizeofExpr = struct {
+    id: u32,
+    type_expr: TypeExpr,
+    loc: Loc,
+}
+
+fn CodeExpr::id(self): u32 {
+    if match CodeExpr::BoolLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::CharLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::NullLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::IntLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::StringLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::ArrayLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::ResultLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Return(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Ident(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InfixOp(e) = self {
+        return e.id
+    }
+    if match CodeExpr::If(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Let(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Fn(e) = self {
+        return e.id
+    }
+    if match CodeExpr::While(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Break(e) = self {
+        return e.id
+    }
+    if match CodeExpr::For(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Continue(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Defer(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Cast(e) = self {
+        return e.id
+    }
+    if match CodeExpr::StructLiteral(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Assign(e) = self {
+        return e.id
+    }
+    if match CodeExpr::FieldAccess(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Catch(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Match(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Paren(e) = self {
+        return e.id
+    }
+    if match CodeExpr::FnCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::MethodCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InlineFnCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::IntrinsicCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::InlineMethodCall(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Sizeof(e) = self {
+        return e.id
+    }
+    if match CodeExpr::PropagateError(e) = self {
+        return e.id
+    }
+    if match CodeExpr::PrefixOp(e) = self {
+        return e.id
+    }
+    if match CodeExpr::DoWith(e) = self {
+        return e.id
+    }
+    if match CodeExpr::Pipe(e) = self {
+        return e.id
+    }
+    @unreachable()
+}
+
+fn CodeExpr::loc(self): Loc {
+    if match CodeExpr::BoolLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::CharLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::NullLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::IntLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::StringLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ArrayLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::ResultLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Return(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Ident(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::InfixOp(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::If(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Let(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Fn(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::While(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Break(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::For(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Continue(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Defer(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Cast(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::StructLiteral(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Assign(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::FieldAccess(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Catch(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Match(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Paren(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::FnCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::MethodCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::InlineFnCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::IntrinsicCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::InlineMethodCall(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Sizeof(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::PropagateError(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::PrefixOp(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::DoWith(e) = self {
+        return e.loc
+    }
+    if match CodeExpr::Pipe(e) = self {
+        return e.loc
+    }
+    @unreachable()
+}

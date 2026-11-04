@@ -1,0 +1,622 @@
+@include("./common.lo")
+@include("./lexer.lo")
+@include("./parser.lo")
+@include("./typer.lo")
+@include("./wasm.lo")
+
+type TypeId = u32
+type ModuleId = u32
+
+type ExprInfo = u32
+let EXPR_INFO_INVALID = u32::MAX as ExprInfo
+
+type ValueKind = enum {
+    Local,
+    Global,
+    Const,
+    EnumConstructor,
+}
+
+type ValueInfo = struct {
+    kind: ValueKind,
+    col_index: u32,
+    type_id: TypeId,
+}
+
+type LocalDef = struct {
+    local_name: &?str,
+    local_type_id: TypeId,
+    wasm_local_index: u32,
+}
+
+type FnInfo = struct {
+    name: str,
+    type_: FnType,
+    params: &Vec(FnParameter),
+    source: FnSource,
+    exported_as: &Vec(String),
+    locals_ids: &Vec(u32),
+    wasm_fn_index: u32,
+    wasm_locals_count: u32,
+    definition_loc: Loc,
+}
+
+type FnParameter = struct {
+    param_name: &IdentExpr,
+    param_type_id: TypeId,
+}
+
+type FnSource = enum (&void) {
+    Guest(&FnSourceGuest),
+    Host(&FnSourceHost),
+}
+
+type FnSourceGuest = struct {
+    module_id: ModuleId,
+    lo_fn_index: u32,
+    body: &CodeBlock,
+}
+
+type FnSourceHost = struct {
+    module_name: String,
+    external_fn_name: str,
+}
+
+type FnType = struct {
+    inputs: &Vec(TypeId),
+    output: TypeId,
+}
+
+type StructDef = struct {
+    ctx: &TyContext,
+    struct_name: str,
+    fields: &Vec(StructField),
+    field_defs: &Vec(StructDefField),
+    resolution: TypeResolution,
+}
+
+type StructField = struct {
+    field_name: str,
+    field_type_id: TypeId,
+    field_layout: TypeLayout,
+    field_index: u32,
+    byte_offset: u32,
+    loc: Loc,
+}
+
+type EnumDef = struct {
+    ctx: &TyContext,
+    enum_name: str,
+    variant_type_id: TypeId,
+    variants: &Vec(EnumVariant),
+    variant_defs: &Vec(EnumDefVariant),
+}
+
+type EnumVariant = struct {
+    variant_name: str,
+    variant_type_id: TypeId,
+    variant_tag_value: u32,
+    has_payload: bool,
+    loc: Loc,
+}
+
+type EnumConstructor = struct {
+    enum_index: u32,
+    variant_index: u32,
+    loc: Loc,
+}
+
+type GlobalDef = struct {
+    module_id: ModuleId,
+    value: CodeExpr,
+    type_id: TypeId,
+    wasm_global_index: u32,
+}
+
+type ConstDef = struct {
+    type_id: TypeId,
+    expr: CodeExpr,
+    inner_expr_id_offset: u32,
+}
+
+type Module = struct {
+    id: ModuleId,
+    absolute_path: String,
+
+    source: str,
+    _source: String,
+
+    includes: &Vec(ModuleInclude),
+    included_times: u32,
+
+    parser: &Parser,
+    error_arena: &Arena,
+}
+
+fn Module::free(&self) {
+    self.parser.lexer.free()
+    self.parser.free()
+}
+
+type ModuleInclude = struct {
+    module_id: ModuleId,
+    alias: &?String,
+    with_extern: bool,
+}
+
+type MemoryInfo = struct {
+    min_pages: &?u32,
+    data_start: &?u32,
+    exported: bool,
+    imported_from: &?String,
+    loc: Loc,
+}
+
+type CallInfo = struct {
+    value: CallInfoValue,
+    return_type_id: TypeId,
+}
+
+type CallInfoValue = enum (u32) {
+    FnCall(u32), // holds fn_index
+    EnumCtor(u32), // holds variant_index
+}
+
+type InlineCallInfo = struct {
+    inline_fn_index: u32,
+    inner_expr_id_offset: u32,
+    return_type_id: TypeId,
+}
+
+type StoredExprBytes = struct {
+    info: BytesSlice,
+    expr_type_id: TypeId,
+}
+
+type BytesSlice = struct {
+    ptr: u32,
+    len: u32,
+}
+
+type PooledString = struct {
+    value: String,
+    ptr: u32,
+}
+
+type BreakInfo = struct {
+    label_index: u32,
+    expr_type_id: TypeId,
+}
+
+type BlockInfo = struct {
+    needs_explicit_trap: bool,
+}
+
+type BinaryOpInfo = struct {
+    is_compound_assignment: bool,
+    op_kind: WasmBinaryOpKind,
+    result_type_id: TypeId,
+}
+
+type Registry = struct {
+    in_single_file_mode: bool,
+
+    reporter: &Reporter,
+
+    modules: &Vec(&Module),
+    module_import_order: &Vec(ModuleId),
+
+    expr_id_count: u32,
+    expr_info: &Vec(ExprInfo), // indexed by `ExprId`
+
+    types: &Vec(Type), //                      indexed by `ExprInfo` for most of the expressions
+    call_info: &Vec(CallInfo), //              indexed by `ExprInfo` for `::FnCall` and `::MethodCall`
+    inline_call_info: &Vec(InlineCallInfo), // indexed by `ExprInfo` for `::InlineFnCall` and `::InlineMethodCall`
+    value_info: &Vec(ValueInfo), //            indexed by `ExprInfo` for `::IdentExpr`
+    stored_bytes: &Vec(StoredExprBytes), //    indexed by `ExprInfo` for `::StringLiteral` and `::ArrayLiteral`
+    breaks: &Vec(BreakInfo), //                indexed by `ExprInfo` for `::Break` and `::Continue`
+    block_info: &Vec(BlockInfo), //            indexed by `ExprInfo` for `::CodeBlock`
+    binary_op_info: &Vec(BinaryOpInfo), //     indexed by `ExprInfo` for `::InfixOp`
+
+    globals: &Vec(GlobalDef), //          indexed by `col_index` when `kind = Global`
+    locals: &Vec(LocalDef), //            indexed by `col_index` when `kind = Local`
+    constants: &Vec(ConstDef), //         indexed by `col_index` when `kind = Const`
+    functions: &Vec(FnInfo), //           indexed by `col_index` when `kind = Function`
+    inline_fns: &Vec(&FnExpr), //         indexed by `col_index` when `kind = InlineFn`
+    structs: &Vec(StructDef), //          indexed by `col_index` when `kind = Struct`
+    enums: &Vec(EnumDef), //              indexed by `col_index` when `kind = Enum`
+    enum_ctors: &Vec(EnumConstructor), // indexed by `col_index` when `kind = EnumConstructor`
+
+    memory_info: &?MemoryInfo,
+    data_size: u32,
+    datas: &Vec(WasmData),
+    string_pool: &Vec(PooledString),
+    str_literal_type_id: &?TypeId,
+
+    error_arena: &Arena,
+}
+
+fn Registry::new(): &Registry {
+    let error_arena = Arena::new(128)
+
+    let self = heap::alloc!<Registry>()
+    *self = Registry {
+        in_single_file_mode: false,
+        reporter: Reporter::new(self),
+        modules: Vec::new!<&Module>(),
+        module_import_order: Vec::new!<ModuleId>(),
+        expr_id_count: 0,
+        expr_info: Vec::new!<ExprInfo>(),
+        types: Vec::new!<Type>(),
+        call_info: Vec::new!<CallInfo>(),
+        inline_call_info: Vec::new!<InlineCallInfo>(),
+        value_info: Vec::new!<ValueInfo>(),
+        stored_bytes: Vec::new!<StoredExprBytes>(),
+        breaks: Vec::new!<BreakInfo>(),
+        block_info: Vec::new!<BlockInfo>(),
+        binary_op_info: Vec::new!<BinaryOpInfo>(),
+        globals: Vec::new!<GlobalDef>(),
+        locals: Vec::new!<LocalDef>(),
+        constants: Vec::new!<ConstDef>(),
+        functions: Vec::new!<FnInfo>(),
+        inline_fns: Vec::new!<&FnExpr>(),
+        structs: Vec::new!<StructDef>(),
+        enums: Vec::new!<EnumDef>(),
+        enum_ctors: Vec::new!<EnumConstructor>(),
+        memory_info: null,
+        data_size: 0,
+        datas: Vec::new!<WasmData>(),
+        string_pool: Vec::new!<PooledString>(),
+        str_literal_type_id: null,
+        error_arena: error_arena,
+    }
+
+    self.modules.push!(heap::new!(Module {
+        id: 0,
+        absolute_path: String::from_str("<internal>"),
+        source: "",
+        _source: String::from_str(""),
+        includes: Vec::new!<ModuleInclude>(),
+        included_times: 0,
+        parser: Parser::new(Lexer::new(error_arena, "", 0), self.reporter),
+        error_arena: error_arena,
+    }))
+
+    return self
+}
+
+fn Registry::free(&self) {
+    self.modules.free_deep!()
+    self.error_arena.free()
+    heap::free(self)
+}
+
+fn Registry::include(
+    &self, \\ relative_path: str, \\ loc: Loc,
+): Result(ModuleId, &VoidError) {
+    let absolute_path = self.resolve_path(relative_path, loc)
+
+    for module in self.modules.iter!() {
+        if module.absolute_path.as_str().equals(absolute_path.as_str()) {
+            module.included_times += 1
+
+            if self.reporter.in_inspection_mode {
+                self.reporter.print_include_info(false, module.id, loc)
+            }
+
+            return Ok(module.id)
+        }
+    }
+
+    let module_id = self.modules.len
+
+    let _source = Registry::read_file(absolute_path.as_str()) catch err {
+        let message = String::new_in(self.error_arena, 64)
+        do message.push_str(it) with (
+            "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
+            err.to_tmp_str!(),
+        )
+
+        self.reporter.error(self.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+
+        return Err(VoidError::VALUE)
+    }
+    let source = _source.as_str()
+
+    let lexer = Lexer::new(self.error_arena, source, module_id)
+    let parser = Parser::new(lexer, self.reporter)
+    let module = heap::new!(Module {
+        id: module_id,
+        absolute_path: absolute_path,
+        source: source,
+        _source: _source,
+        includes: Vec::new!<ModuleInclude>(),
+        included_times: 0,
+        parser: parser,
+        error_arena: self.error_arena,
+    })
+    self.modules.push!(module)
+
+    if self.reporter.in_inspection_mode {
+        self.reporter.print_include_info(true, module_id, loc)
+    }
+
+    lexer.lex_file() catch err {
+        self.reporter.error(err)
+        return Err(VoidError::VALUE)
+    }
+
+    self.modules.get!(module_id).parser.expr_id_count = self.expr_id_count
+
+    parser.parse_file() catch err {
+        self.reporter.error(err)
+        return Err(VoidError::VALUE)
+    }
+
+    self.expr_id_count = self.modules.get!(module_id).parser.expr_id_count
+
+    if !self.in_single_file_mode {
+        for expr in self.modules.get!(module_id).parser.ast.iter!() {
+            let include_info = get_include_info(self.error_arena, expr) catch err {
+                self.reporter.error(err)
+                continue
+            }
+
+            if include_info == null {
+                continue
+            }
+
+            let included_module_id = self.include(
+                include_info.file_path.value.as_str(),
+                include_info.file_path.loc,
+            ) catch _ {
+                continue
+            }
+
+            self.modules.get!(module_id).includes.push!(ModuleInclude {
+                module_id: included_module_id,
+                alias: include_info.alias,
+                with_extern: include_info.with_extern,
+            })
+        }
+    }
+
+    self.module_import_order.push!(module_id)
+
+    return Ok(module_id)
+}
+
+fn Registry::read_file(file_path: str): Result(String, wasi::Err) {
+    if file_path.equals("<stdin>") {
+        let bytes = fs::read_fd(wasi::FD_STDIN)?
+        return Ok(String::from_chars(bytes))
+    }
+
+    return fs::read_file(file_path)
+}
+
+fn Registry::add_local(
+    &self,
+    fn_index: u32,
+    local_name: &?str,
+    local_type_id: TypeId,
+): u32 {
+    let fn_info = self.functions.at!(fn_index)
+
+    let wasm_local_index = fn_info.wasm_locals_count
+
+    fn_info.locals_ids.push!(self.locals.len)
+    self.locals.push!(LocalDef {
+        local_name: local_name,
+        local_type_id: local_type_id,
+        wasm_local_index: wasm_local_index,
+    })
+    fn_info.wasm_locals_count += Typer::count_primitive_components(
+        self,
+        self.get_type(local_type_id),
+    )
+
+    return wasm_local_index
+}
+
+fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
+    if !file_path.starts_with(".") {
+        return String::from_str(file_path)
+    }
+
+    let relative_to = self.modules.get!(loc.module_id).absolute_path
+
+    let path_items = relative_to.as_str().split('/', Vec::new!<str>())
+    defer path_items.free()
+
+    path_items.pop() // remove `relative_to`'s filename
+
+    let _ = file_path.split('/', path_items)
+
+    let normalized = Vec::new!<str>()
+    defer normalized.free()
+
+    for i in 0..path_items.len {
+        let item = path_items.get!(i)
+
+        if item.equals(".") {
+            continue
+        }
+
+        if item.equals("..") {
+            if normalized.len > 0 {
+                normalized.pop()
+            }
+            continue
+        }
+
+        normalized.push!(item)
+    }
+
+    return String::join(normalized, '/')
+}
+
+fn Registry::get_expr_type(&self, expr_id_offset: u32, expr: CodeExpr): &?TypeId {
+    let expr_info = self.get_expr_info(expr_id_offset, expr.id())
+    if expr_info == null {
+        return null
+    }
+
+    if match CodeExpr::Ident(_) = expr {
+        let symbol = self.value_info.at!(*expr_info)
+        return &symbol.type_id
+    }
+
+    if match CodeExpr::FnCall(_) = expr {
+        let call_info = self.call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
+    if match CodeExpr::MethodCall(_) = expr {
+        let call_info = self.call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
+    if match CodeExpr::InlineFnCall(_) = expr {
+        let call_info = self.inline_call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
+    if match CodeExpr::InlineMethodCall(_) = expr {
+        let call_info = self.inline_call_info.at!(*expr_info)
+        return &call_info.return_type_id
+    }
+
+    if match CodeExpr::InfixOp(_) = expr {
+        let binary_op_info = self.binary_op_info.at!(*expr_info)
+        return &binary_op_info.result_type_id
+    }
+
+    if match CodeExpr::StringLiteral(_) = expr {
+        let stored_bytes = self.stored_bytes.at!(*expr_info)
+        return &stored_bytes.expr_type_id
+    }
+
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        let stored_bytes = self.stored_bytes.at!(*expr_info)
+        return &stored_bytes.expr_type_id
+    }
+
+    if match CodeExpr::Break(_) = expr {
+        let break_info = self.breaks.at!(*expr_info)
+        return &break_info.expr_type_id
+    }
+
+    if match CodeExpr::Continue(_) = expr {
+        let break_info = self.breaks.at!(*expr_info)
+        return &break_info.expr_type_id
+    }
+
+    return expr_info
+}
+
+fn Registry::get_expr_info(&self, expr_id_offset: u32, expr_id: u32): &?ExprInfo {
+    let expr_info = self.expr_info.at!(expr_id_offset + expr_id)
+    if *expr_info == EXPR_INFO_INVALID {
+        return null
+    }
+    return expr_info
+}
+
+fn Registry::get_type(&self, type_id: TypeId): Type {
+    return self.types.get!(type_id)
+}
+
+// TODO(perf)?: use a better data structure
+fn Registry::intern_type(&self, type_: Type): TypeId {
+    for type_id in 0..self.types.len {
+        let interned_type = self.types.get!(type_id)
+        if interned_type.equals(type_) {
+            return type_id
+        }
+    }
+
+    let type_id = self.types.len
+    self.types.push!(type_)
+    return type_id
+}
+
+fn Registry::fmt(&self, type_: Type): str {
+    let str_result = type_.to_str()
+    if str_result.err as u32 == 0 {
+        return str_result.ok
+    }
+
+    if match Type::Struct(struct_type) = type_ {
+        return self.structs.at!(struct_type.struct_index).struct_name
+    }
+
+    if match Type::Enum(enum_type) = type_ {
+        return self.enums.at!(enum_type.enum_index).enum_name
+    }
+
+    if match Type::Pointer(ptr) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        out.push_str("&")
+        if ptr.is_nullable {
+            out.push_str("?")
+        }
+        if ptr.is_sequence {
+            out.push_str("[]")
+        }
+        out.push_str(self.fmt(self.get_type(ptr.pointee)))
+        return out.as_str()
+    }
+
+    if match Type::Result(result) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        do out.push_str(it) with (
+            "Result(",
+            self.fmt(self.get_type(result.ok)),
+            ", ",
+            self.fmt(self.get_type(result.err)),
+            ")",
+        )
+        return out.as_str()
+    }
+
+    if match Type::Seg(seg) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        do out.push_str(it) with (
+            "seg(",
+            self.fmt(self.get_type(seg.item)),
+            ")",
+        )
+        return out.as_str()
+    }
+
+    if match Type::Container(ctr) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+        out.push_str(self.fmt(self.get_type(ctr.container)))
+        out.push_str("(")
+        for i in 0..ctr.items.len {
+            if i != 0 {
+                out.push_str(", ")
+            }
+            out.push_str(self.fmt(self.get_type(ctr.items.get!(i))))
+        }
+        out.push_str(")")
+        return out.as_str()
+    }
+
+    @unreachable()
+}
+
+fn Registry::fmt_many(&self, type_ids: &Vec(TypeId)): str {
+    let out = String::new_in(self.error_arena, 16)
+    for i in 0..type_ids.len {
+        if i != 0 {
+            out.push_str(", ")
+        }
+        out.push_str(self.fmt(self.get_type(type_ids.get!(i))))
+    }
+    return out.as_str()
+}

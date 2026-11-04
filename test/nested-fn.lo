@@ -1,0 +1,13 @@
+export fn main(): u32 {
+    // calls a nested/child function
+    return factorial(5)
+
+    // nested fns can be defined after the usage site
+    fn factorial(x: u32): u32 {
+        if x < 2 {
+            return x
+        }
+
+        return x * factorial(x - 1)
+    }
+}

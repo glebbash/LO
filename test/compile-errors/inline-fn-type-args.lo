@@ -1,0 +1,8 @@
+inline fn first!<T>(a: T): T {
+    a
+}
+
+fn main() {
+    // error
+    let _ = first!<u32, bool>(1)
+}

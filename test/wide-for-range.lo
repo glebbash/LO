@@ -1,0 +1,14 @@
+// 64-bit counters work in ranges the same way 32-bit ones do
+export fn main(): u32 {
+    let total = 0u64
+    for i in 0u64..5u64 {
+        total += i
+    }
+
+    let signed_total = 0i64
+    for i in 1i64..4i64 {
+        signed_total += i
+    }
+
+    return (total as u32) + (signed_total as u32)
+}

@@ -1,0 +1,8 @@
+fn get(): u32 {
+    return 1
+}
+
+fn main() {
+    // error
+    get() = 2
+}

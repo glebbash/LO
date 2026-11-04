@@ -1,0 +1,14 @@
+let u8s = [u8][1u8, 2u8, 3u8]
+let i8s = [i8][1i8, 2i8]
+let u16s = [u16][1000u16, 2000u16]
+let i16s = [i16][1000i16, 2000i16]
+let u32s = [u32][100000, 200000]
+let i32s = [i32][100000i32, 200000i32]
+let u64s = [u64][5000000000u64]
+let i64s = [i64][5000000000i64]
+
+export fn main(): u32 {
+    return u8s.len + i8s.len \
+        + u16s.len + i16s.len \
+        + u32s.len + i32s.len + u64s.len + i64s.len
+}

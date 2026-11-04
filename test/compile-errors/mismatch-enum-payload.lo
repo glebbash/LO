@@ -1,0 +1,9 @@
+type Shape = enum (u32) {
+    Circle(u32),
+    Square(u32),
+}
+
+fn main() {
+    // error
+    let _ = Shape::Circle(true)
+}

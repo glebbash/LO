@@ -1,0 +1,32 @@
+@include("../../../lib/cli.lo")
+@include("../../../lib/fs.lo")
+
+fn main() {
+    let input = fs::read_file!("./test/demos/aoc2023/1.txt")
+    defer input.free()
+
+    let calibration_sum = 0
+    let first_digit = 0
+    let last_digit = 0
+    for c in input.chars.iter!() {
+        if c >= '0' && c <= '9' {
+            if first_digit == 0 {
+                first_digit = (c - '0') as u32
+                last_digit = (c - '0') as u32
+            } else {
+                last_digit = (c - '0') as u32
+            }
+            continue
+        }
+
+        if c == '\n' {
+            let calibration_value = first_digit * 10 + last_digit
+            calibration_sum += calibration_value
+            first_digit = 0
+            last_digit = 0
+            continue
+        }
+    }
+
+    println(calibration_sum.to_tmp_str!())
+}

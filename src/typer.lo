@@ -1,0 +1,5694 @@
+// AI Use Disclosure: Most of this file was ported from the initial Rust
+//   compiler as closely as possible using AI.
+// It has been heavily tested for conformance with the original, but has not
+//   yet undergone extensive human review and/or refactoring.
+
+@include("./common.lo")
+@include("./ast.lo")
+@include("./registry.lo")
+@include("./wasm.lo")
+
+type Type = enum (&void) {
+    Never,
+    Null,
+    Void,
+    Bool,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    F32,
+    F64,
+    Pointer(&PointerType),
+    Struct(&StructType),
+    Enum(&EnumType),
+    Seg(&SegType),
+    Result(&ResultType),
+    Container(&ContainerType),
+}
+
+fn Type::equals(self, other): bool {
+    if match Type::Never(_) = self {
+        if match Type::Never(_) = other {
+            return true
+        }
+    }
+
+    if match Type::Null(_) = self {
+        if match Type::Null(_) = other {
+            return true
+        }
+    }
+
+    if match Type::Void(_) = self {
+        if match Type::Void(_) = other {
+            return true
+        }
+    }
+
+    if match Type::Bool(_) = self {
+        if match Type::Bool(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U8(_) = self {
+        if match Type::U8(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I8(_) = self {
+        if match Type::I8(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U16(_) = self {
+        if match Type::U16(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I16(_) = self {
+        if match Type::I16(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U32(_) = self {
+        if match Type::U32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I32(_) = self {
+        if match Type::I32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::U64(_) = self {
+        if match Type::U64(_) = other {
+            return true
+        }
+    }
+
+    if match Type::I64(_) = self {
+        if match Type::I64(_) = other {
+            return true
+        }
+    }
+
+    if match Type::F32(_) = self {
+        if match Type::F32(_) = other {
+            return true
+        }
+    }
+
+    if match Type::F64(_) = self {
+        if match Type::F64(_) = other {
+            return true
+        }
+    }
+
+    if match Type::Pointer(ptr) = self {
+        if match Type::Pointer(other_ptr) = other {
+            return ptr.pointee == other_ptr.pointee && ptr.is_sequence == other_ptr.is_sequence && ptr.is_nullable == other_ptr.is_nullable
+        }
+    }
+
+    if match Type::Struct(struct_) = self {
+        if match Type::Struct(other_struct) = other {
+            return struct_.struct_index == other_struct.struct_index
+        }
+    }
+
+    if match Type::Enum(enum_) = self {
+        if match Type::Enum(other_enum) = other {
+            return enum_.enum_index == other_enum.enum_index
+        }
+    }
+
+    if match Type::Seg(seg) = self {
+        if match Type::Seg(other_seg) = other {
+            return seg.item == other_seg.item
+        }
+    }
+
+    if match Type::Result(result) = self {
+        if match Type::Result(other_result) = other {
+            return result.ok == other_result.ok && result.err == other_result.err
+        }
+    }
+
+    if match Type::Container(self_ctr) = self {
+        if match Type::Container(other_ctr) = other {
+            if self_ctr.container != other_ctr.container {
+                return false
+            }
+
+            if self_ctr.items.len != other_ctr.items.len {
+                return false
+            }
+
+            for i in 0..self_ctr.items.len {
+                if self_ctr.items.get!(i) != other_ctr.items.get!(i) {
+                    return false
+                }
+            }
+
+            return true
+        }
+    }
+
+    return false
+}
+
+fn Type::to_str(self): Result(str, &VoidError) {
+    if match Type::Never(_) = self {
+        return Ok("never")
+    }
+    if match Type::Null(_) = self {
+        return Ok("null")
+    }
+    if match Type::Void(_) = self {
+        return Ok("void")
+    }
+    if match Type::Bool(_) = self {
+        return Ok("bool")
+    }
+    if match Type::U8(_) = self {
+        return Ok("u8")
+    }
+    if match Type::I8(_) = self {
+        return Ok("i8")
+    }
+    if match Type::U16(_) = self {
+        return Ok("u16")
+    }
+    if match Type::I16(_) = self {
+        return Ok("i16")
+    }
+    if match Type::U32(_) = self {
+        return Ok("u32")
+    }
+    if match Type::I32(_) = self {
+        return Ok("i32")
+    }
+    if match Type::F32(_) = self {
+        return Ok("f32")
+    }
+    if match Type::U64(_) = self {
+        return Ok("u64")
+    }
+    if match Type::I64(_) = self {
+        return Ok("i64")
+    }
+    if match Type::F64(_) = self {
+        return Ok("f64")
+    }
+    return Err(VoidError::VALUE)
+}
+
+type TypeLayout = struct {
+    primitives_count: u32,
+    primitives: &?Vec(Type),
+    byte_size: u32,
+    alignment: u32,
+}
+
+fn TypeLayout::new(): TypeLayout {
+    return TypeLayout {
+        primitives_count: 0,
+        primitives: null,
+        byte_size: 0,
+        alignment: 1,
+    }
+}
+
+type PointerType = struct {
+    pointee: TypeId,
+    is_sequence: bool,
+    is_nullable: bool,
+}
+
+type StructType = struct {
+    struct_index: u32,
+}
+
+type EnumType = struct {
+    enum_index: u32,
+}
+
+type SegType = struct {
+    item: TypeId,
+}
+
+type ResultType = struct {
+    ok: TypeId,
+    err: TypeId,
+}
+
+type ContainerType = struct {
+    container: TypeId,
+    items: &Vec(TypeId),
+}
+
+type ScopeKind = enum {
+    Global,
+    Function,
+    Block,
+    Loop,
+    ForLoop,
+    InlineFn,
+}
+
+type TySymbolKind = enum {
+    TypeAlias,
+    Struct,
+    Enum,
+
+    Local,
+    Global,
+    Const,
+
+    InlineFn,
+    Function,
+    EnumConstructor,
+}
+
+type VariableKind = enum {
+    Readonly,
+    ReadWrite,
+    ReadWriteStored,
+}
+
+type TySymbol = struct {
+    ctx_id: u32,
+    name: str,
+    kind: TySymbolKind,
+    col_index: u32,
+    loc: Loc,
+    defining_fn_index: &?u32, // used for accidental capture checks
+}
+
+type TyContext = struct {
+    module_id: u32,
+    id: u32,
+    parent: &?TyContext,
+    kind: ScopeKind,
+    fn_index: &?u32,
+    expr_id_offset: u32,
+    symbols: &Vec(TySymbol),
+
+    inline_fn_call_loc: &?Loc,
+    is_expr_referenced: bool,
+}
+
+fn TyContext::add_symbol(&self, symbol: TySymbol) {
+    self.symbols.push!(symbol)
+}
+
+type TyModuleInfo = struct {
+    ctx: &TyContext,
+}
+
+type TypeResolution = enum {
+    NotStarted,
+    InProgress,
+    Resolved,
+}
+
+type TyTypeAlias = struct {
+    ctx: &TyContext,
+    type_id: TypeId,
+    expr: &TypeExpr,
+    resolution: TypeResolution,
+}
+
+type Typer = struct {
+    // context
+    registry: &Registry,
+    reporter: &Reporter,
+
+    // state
+    contexts: StableVec(TyContext),
+    module_info: &Vec(TyModuleInfo),
+    type_aliases: &Vec(TyTypeAlias),
+    allocated_strings: &Vec(String),
+    forbid_memory_loc: &?Loc,
+    autodefine_memory: bool,
+}
+
+fn Typer::new(registry: &Registry): &Typer {
+    return heap::new!(Typer {
+        registry: registry,
+        reporter: registry.reporter,
+
+        contexts: StableVec::new!<TyContext>(),
+        module_info: Vec::new!<TyModuleInfo>(),
+        type_aliases: Vec::new!<TyTypeAlias>(),
+        allocated_strings: Vec::new!<String>(),
+        forbid_memory_loc: null,
+        autodefine_memory: false,
+    })
+}
+
+fn Typer::type_all(&self) {
+    let global_ctx = self.contexts.push!(TyContext {
+        module_id: u32::MAX, // global scope has no module
+        id: 0,
+        parent: null,
+        kind: ScopeKind::Global,
+        fn_index: null,
+        expr_id_offset: 0,
+        symbols: Vec::new!<TySymbol>(),
+
+        inline_fn_call_loc: null,
+        is_expr_referenced: false,
+    })
+
+    self.module_info.reserve(self.registry.modules.len)
+    for module in self.registry.modules.iter!() {
+        let module_ctx = self.child_ctx(global_ctx, ScopeKind::Global)
+        module_ctx.module_id = module.id
+
+        self.module_info.push!(TyModuleInfo { ctx: module_ctx })
+    }
+
+    self.extend_expr_info_storage(self.registry.expr_id_count)
+
+    self.add_builtin_type(global_ctx, Type::Never)
+    self.add_builtin_type(global_ctx, Type::Void)
+    self.add_builtin_type(global_ctx, Type::Bool)
+    self.add_builtin_type(global_ctx, Type::U8)
+    self.add_builtin_type(global_ctx, Type::I8)
+    self.add_builtin_type(global_ctx, Type::U16)
+    self.add_builtin_type(global_ctx, Type::I16)
+    self.add_builtin_type(global_ctx, Type::U32)
+    self.add_builtin_type(global_ctx, Type::I32)
+    self.add_builtin_type(global_ctx, Type::F32)
+    self.add_builtin_type(global_ctx, Type::U64)
+    self.add_builtin_type(global_ctx, Type::I64)
+    self.add_builtin_type(global_ctx, Type::F64)
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.collect_own_symbols(self.module_info.get!(module_id).ctx)
+    }
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.collect_included_symbols(self.module_info.get!(module_id).ctx)
+    }
+
+    for &type_alias in self.type_aliases.iter!() {
+        self.resolve_type_alias(type_alias)
+    }
+
+    for &struct_def in self.registry.structs.iter!() {
+        let _ = self.resolve_struct_layout(struct_def)
+    }
+
+    for &enum_def in self.registry.enums.iter!() {
+        self.resolve_enum_body(enum_def)
+    }
+
+    self.resolve_str_literal_type()
+
+    for module_id in self.registry.module_import_order.iter!() {
+        self.process_top_level_exprs(self.module_info.get!(module_id).ctx)
+    }
+
+    self.type_fns()
+
+    self.run_delayed_actions()
+}
+
+fn Typer::collect_own_symbols(&self, ctx: &TyContext) {
+    let module = self.registry.modules.get!(ctx.module_id)
+
+    for expr in module.parser.ast.iter!() {
+        if match TopLevelExpr::Intrinsic(_) = expr {
+            continue // skip, not interested
+        }
+
+        if match TopLevelExpr::TypeDef(type_def) = expr {
+            if match TypeDefValue::Struct(struct_value) = type_def.value {
+                let _ = self.define_symbol(
+                    ctx,
+                    type_def.name.repr,
+                    TySymbolKind::Struct,
+                    type_def.name.loc,
+                )
+
+                self.registry.structs.push!(StructDef {
+                    ctx: ctx,
+                    struct_name: type_def.name.repr,
+                    fields: Vec::new!<StructField>(),
+                    field_defs: struct_value.fields,
+                    resolution: TypeResolution::NotStarted,
+                })
+            }
+
+            if match TypeDefValue::Enum(enum_value) = type_def.value {
+                if !self.define_symbol(ctx, type_def.name.repr, TySymbolKind::Enum, type_def.name.loc) {
+                    continue
+                }
+
+                let variant_type_id = self.intern_type(Type::Void)
+                if enum_value.variant_type != null {
+                    let type_id_result = self.build_type(ctx, *enum_value.variant_type)
+                    if type_id_result.err as u32 != 0 {
+                        variant_type_id = self.intern_type(Type::Never)
+                        self.report_error(type_id_result.err)
+                    } else {
+                        variant_type_id = type_id_result.ok
+                    }
+                }
+
+                self.registry.enums.push!(EnumDef {
+                    ctx: ctx,
+                    enum_name: type_def.name.repr,
+                    variant_type_id: variant_type_id,
+                    variants: Vec::new!<EnumVariant>(), // placeholder
+                    variant_defs: enum_value.variants,
+                })
+
+                for variant_index in 0..enum_value.variants.len {
+                    let variant = enum_value.variants.get!(variant_index)
+
+                    let constructor_name_string = String::from_str(type_def.name.repr)
+                    constructor_name_string.push_str("::")
+                    constructor_name_string.push_str(variant.variant_name.repr)
+                    let constructor_name = self.alloc_str(constructor_name_string)
+
+                    let enum_index = self.registry.enums.len - 1
+
+                    let _ = self.define_symbol(
+                        ctx,
+                        constructor_name,
+                        TySymbolKind::EnumConstructor,
+                        variant.variant_name.loc,
+                    )
+
+                    self.registry.enum_ctors.push!(EnumConstructor {
+                        enum_index: enum_index,
+                        variant_index: variant_index,
+                        loc: variant.variant_name.loc,
+                    })
+                }
+            }
+
+            if match TypeDefValue::Alias(type_expr) = type_def.value {
+                let _ = self.define_symbol(
+                    ctx,
+                    type_def.name.repr,
+                    TySymbolKind::TypeAlias,
+                    type_def.name.loc,
+                )
+
+                self.type_aliases.push!(TyTypeAlias {
+                    ctx: ctx,
+                    type_id: self.intern_type(Type::Never), // placeholder
+                    expr: type_expr,
+                    resolution: TypeResolution::NotStarted,
+                })
+            }
+
+            continue
+        }
+
+        if match TopLevelExpr::Fn(fn_def) = expr {
+            if fn_def.is_inline {
+                let _ = self.define_symbol(
+                    ctx,
+                    fn_def.decl.fn_name.repr,
+                    TySymbolKind::InlineFn,
+                    fn_def.decl.fn_name.loc,
+                )
+
+                self.registry.inline_fns.push!(fn_def)
+                continue
+            }
+
+            let _ = self.define_symbol(
+                ctx,
+                fn_def.decl.fn_name.repr,
+                TySymbolKind::Function,
+                fn_def.decl.fn_name.loc,
+            )
+
+            if match FnExprValue::Body(body) = fn_def.value {
+                let exported_as = Vec::new!<String>()
+                if fn_def.exported {
+                    exported_as.push!(String::from_str(fn_def.decl.fn_name.repr))
+                }
+
+                self.registry.functions.push!(FnInfo {
+                    name: fn_def.decl.fn_name.repr,
+                    type_: FnType {
+                        inputs: Vec::new!<TypeId>(),
+                        output: self.intern_type(Type::Void),
+                    },
+                    params: Vec::new!<FnParameter>(),
+                    source: FnSource::Guest(heap::new!(FnSourceGuest {
+                        module_id: module.id,
+                        lo_fn_index: self.registry.functions.len,
+                        body: body,
+                    })),
+                    exported_as: exported_as,
+                    locals_ids: Vec::new!<u32>(),
+                    wasm_fn_index: u32::MAX, // placeholder
+                    wasm_locals_count: 0,
+                    definition_loc: fn_def.decl.fn_name.loc,
+                })
+            }
+
+            if match FnExprValue::ImportFrom(imported_from) = fn_def.value {
+                let module_name = (*imported_from).get_value(module.source)
+                let method_name = fn_def.decl.fn_name.parts.get!(fn_def.decl.fn_name.parts.len - 1u32)
+                let external_fn_name = method_name.read_span(module.source)
+                let placeholder_fn_output = self.intern_type(Type::Void)
+
+                self.registry.functions.push!(FnInfo {
+                    name: fn_def.decl.fn_name.repr,
+                    type_: FnType {
+                        inputs: Vec::new!<TypeId>(),
+                        output: placeholder_fn_output,
+                    },
+                    params: Vec::new!<FnParameter>(),
+                    source: FnSource::Host(heap::new!(FnSourceHost {
+                        module_name: module_name.clone(),
+                        external_fn_name: external_fn_name,
+                    })),
+                    exported_as: Vec::new!<String>(),
+                    locals_ids: Vec::new!<u32>(),
+                    wasm_fn_index: u32::MAX, // placeholder
+                    wasm_locals_count: 0,
+                    definition_loc: fn_def.decl.fn_name.loc,
+                })
+            }
+        }
+
+        if match TopLevelExpr::Let(let_expr) = expr {
+            if let_expr.is_inline {
+                let _ = self.define_symbol(
+                    ctx,
+                    let_expr.name.repr,
+                    TySymbolKind::Const,
+                    let_expr.name.loc,
+                )
+
+                self.registry.constants.push!(ConstDef {
+                    type_id: self.intern_type(Type::Never), // placeholder
+                    expr: let_expr.value,
+                    inner_expr_id_offset: ctx.expr_id_offset,
+                })
+                continue
+            }
+
+            let _ = self.define_symbol(
+                ctx,
+                let_expr.name.repr,
+                TySymbolKind::Global,
+                let_expr.name.loc,
+            )
+
+            self.registry.globals.push!(GlobalDef {
+                module_id: module.id,
+                value: let_expr.value,
+                type_id: self.intern_type(Type::Never), // placeholder
+                wasm_global_index: 0, // placeholder
+            })
+        }
+    }
+}
+
+fn Typer::collect_included_symbols(&self, ctx: &TyContext) {
+    self.collect_included_symbols_(ctx, ctx, String::from_str(""), true)
+}
+
+fn Typer::collect_included_symbols_(
+    &self,
+    includer: &TyContext,
+    includee: &TyContext,
+    prefix: String,
+    force_go_deeper: bool,
+) {
+    if includer.module_id != includee.module_id {
+        for symbol in includee.symbols.iter!() {
+            let included_symbol = symbol
+
+            if prefix.len() != 0 {
+                let included_symbol_name = String::from_str(prefix.as_str())
+                included_symbol_name.push_str(symbol.name)
+                included_symbol.name = self.alloc_str(included_symbol_name)
+            }
+
+            let existing_symbol = null as &?TySymbol
+            for &candidate in includer.symbols.iter!() {
+                if candidate.name.equals(included_symbol.name) {
+                    existing_symbol = candidate
+                    break
+                }
+            }
+
+            if existing_symbol != null {
+                let existing = *existing_symbol
+
+                if existing.ctx_id != included_symbol.ctx_id {
+                    let message = String::from_str_in(self.registry.error_arena, "Cannot redefine ")
+                    do message.push_str(it) with (
+                        existing.name,
+                        ", already defined at ",
+                        included_symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: existing.loc,
+                    }))
+                    continue
+                }
+            }
+
+            includer.add_symbol(included_symbol)
+        }
+    }
+
+    let original_prefix_len = prefix.len()
+    for include in self.registry.modules.get!(includee.module_id).includes.iter!() {
+        if !(include.with_extern || force_go_deeper) {
+            continue
+        }
+
+        if include.alias != null {
+            prefix.push_str((*include.alias).as_str())
+            prefix.push_str("::")
+        }
+
+        let sub_includee = self.module_info.get!(include.module_id)
+        self.collect_included_symbols_(includer, sub_includee.ctx, prefix, false)
+        prefix.truncate(original_prefix_len)
+    }
+}
+
+fn Typer::resolve_type_alias(&self, type_alias: &TyTypeAlias) {
+    if type_alias.resolution == TypeResolution::Resolved {
+        return
+    }
+
+    if type_alias.resolution == TypeResolution::InProgress {
+        type_alias.resolution = TypeResolution::Resolved
+        self.report_error(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Cannot determite size of recursive type"),
+            loc: (*type_alias.expr).loc(),
+        }))
+        return
+    }
+
+    type_alias.resolution = TypeResolution::InProgress
+
+    if match TypeExpr::Pointer(_) = *type_alias.expr {
+        // not interested
+    } else if match TypeExpr::Named(ident) = *type_alias.expr {
+        let symbol = self.get_symbol(type_alias.ctx, ident.repr)
+        if symbol != null && symbol.kind == TySymbolKind::TypeAlias {
+            self.resolve_type_alias(self.type_aliases.at!(symbol.col_index))
+        }
+    } else if match TypeExpr::Container(ctr) = *type_alias.expr {
+        match TypeExpr::Named(ident) = ctr.container else {
+            @unreachable()
+        }
+
+        let symbol = self.get_symbol(type_alias.ctx, ident.repr)
+        if symbol != null && symbol.kind == TySymbolKind::TypeAlias {
+            self.resolve_type_alias(self.type_aliases.at!(symbol.col_index))
+        }
+    }
+
+    let build_result = self.build_type(type_alias.ctx, *type_alias.expr)
+    if build_result.err as u32 == 0 {
+        type_alias.type_id = build_result.ok
+    }
+
+    type_alias.resolution = TypeResolution::Resolved
+}
+
+fn Typer::resolve_struct_layout(&self, struct_def: &StructDef): bool {
+    if struct_def.resolution == TypeResolution::Resolved {
+        return true
+    }
+
+    if struct_def.resolution == TypeResolution::InProgress {
+        struct_def.resolution = TypeResolution::Resolved
+        return false
+    }
+
+    struct_def.resolution = TypeResolution::InProgress
+
+    let struct_layout = TypeLayout::new()
+
+    for field in struct_def.field_defs.iter!() {
+        let is_redefined = false
+        for existing_field in struct_def.fields.iter!() {
+            if existing_field.field_name.equals(field.field_name.repr) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot redefine struct field '",
+                )
+                do message.push_str(it) with (
+                    field.field_name.repr,
+                    "', previously defined at ",
+                    existing_field.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field.field_name.loc,
+                }))
+                is_redefined = true
+                break
+            }
+        }
+        if is_redefined {
+            continue
+        }
+
+        let field_type_result = self.build_type(struct_def.ctx, field.field_type)
+        let field_type_id = self.intern_type(Type::Never)
+        if field_type_result.err as u32 == 0 {
+            field_type_id = field_type_result.ok
+        } else {
+            self.report_error(field_type_result.err)
+        }
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                struct_def.struct_name,
+                ".",
+                field.field_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(field_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: field.field_name.loc,
+                linked_loc: null,
+            })
+        }
+
+        let ok = self.resolve_type_size(struct_def.ctx, field_type_id)
+        if !ok {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot determite size of recursive type",
+                ),
+                loc: field.field_type.loc(),
+            }))
+            continue
+        }
+
+        let field_layout = ref!(TypeLayout::new())
+        Typer::get_type_layout(self.registry, self.get_type(field_type_id), field_layout)
+
+        let field_index = struct_layout.primitives_count
+        struct_layout.primitives_count += field_layout.primitives_count
+        struct_layout.alignment = u32::max!(struct_layout.alignment, field_layout.alignment)
+
+        struct_def.fields.push!(StructField {
+            field_name: field.field_name.repr,
+            field_type_id: field_type_id,
+            field_layout: *field_layout,
+            field_index: field_index,
+            byte_offset: 0, // placeholder, updated when fields are aligned
+            loc: field.field_name.loc,
+        })
+    }
+
+    // align fields
+    for &field in struct_def.fields.iter!() {
+        struct_layout.byte_size = Typer::align(struct_layout.byte_size, field.field_layout.alignment)
+
+        field.byte_offset = struct_layout.byte_size
+        struct_layout.byte_size += field.field_layout.byte_size
+    }
+
+    struct_def.resolution = TypeResolution::Resolved
+    return true
+}
+
+fn Typer::resolve_type_size(&self, ctx: &TyContext, type_id: TypeId): bool {
+    let type_ = self.get_type(type_id)
+
+    if match Type::Result(result) = type_ {
+        return self.resolve_type_size(ctx, result.ok) && self.resolve_type_size(ctx, result.err)
+    }
+
+    if match Type::Container(ctr) = type_ {
+        return self.resolve_type_size(ctx, ctr.container)
+    }
+
+    if match Type::Struct(struct_type) = type_ {
+        let struct_def = self.registry.structs.at!(struct_type.struct_index)
+        return self.resolve_struct_layout(struct_def)
+    }
+
+    return true
+}
+
+fn Typer::resolve_enum_body(&self, enum_def: &EnumDef) {
+    let next_variant_tag_value = 0
+    let using_implicit_tag_values = true
+
+    for variant_index in 0..enum_def.variant_defs.len {
+        let variant = enum_def.variant_defs.get!(variant_index)
+
+        let is_redefined = false
+        for &existing_variant in enum_def.variants.iter!() {
+            if existing_variant.variant_name.equals(variant.variant_name.repr) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot redefine enum variant '",
+                )
+                do message.push_str(it) with (
+                    variant.variant_name.repr,
+                    "', previously defined at ",
+                    existing_variant.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: variant.variant_name.loc,
+                }))
+                is_redefined = true
+                break
+            }
+        }
+        if is_redefined {
+            continue
+        }
+
+        let has_payload = false
+        let variant_type_id = 0
+        if variant.variant_type != null {
+            has_payload = true
+            let type_id_result = self.build_type(enum_def.ctx, *variant.variant_type)
+            if type_id_result.err as u32 != 0 {
+                self.report_error(type_id_result.err)
+                variant_type_id = self.intern_type(Type::Never)
+            } else {
+                variant_type_id = type_id_result.ok
+            }
+        } else {
+            has_payload = false
+            variant_type_id = enum_def.variant_type_id
+        }
+
+        let variant_tag_value = 0
+        if variant.variant_tag_value != null {
+            if using_implicit_tag_values && next_variant_tag_value > 0 {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Forbidden mix of implicit and explicit variant values",
+                    ),
+                    loc: variant.loc,
+                }))
+            }
+
+            variant_tag_value = (*variant.variant_tag_value).value as u32
+            using_implicit_tag_values = false
+        } else {
+            if !using_implicit_tag_values {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Forbidden mix of implicit and explicit variant values",
+                    ),
+                    loc: variant.loc,
+                }))
+            }
+
+            variant_tag_value = next_variant_tag_value
+            next_variant_tag_value += 1
+        }
+
+        if !self.is_type_compatible(self.get_type(enum_def.variant_type_id), self.get_type(variant_type_id)) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Enum variant is not compatible with ",
+            )
+            message.push_str(self.registry.fmt(self.get_type(enum_def.variant_type_id)))
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: variant.variant_name.loc,
+            }))
+        }
+
+        enum_def.variants.push!(EnumVariant {
+            variant_name: variant.variant_name.repr,
+            variant_type_id: variant_type_id,
+            variant_tag_value: variant_tag_value,
+            has_payload: has_payload,
+            loc: variant.variant_name.loc,
+        })
+    }
+}
+
+type StructFieldInfo = struct {
+    field_type_id: TypeId,
+    field_index: u32,
+    byte_offset: u32,
+    loc: &?Loc,
+}
+
+fn Typer::get_struct_field_info(
+    registry: &Registry,
+    lhs_type: Type,
+    field_access: &FieldAccessExpr,
+): Result(StructFieldInfo, &Error) {
+    if match Type::Pointer(ptr) = lhs_type {
+        if !ptr.is_sequence {
+            lhs_type = registry.get_type(ptr.pointee)
+        }
+    }
+
+    if match Type::Container(ctr) = lhs_type {
+        lhs_type = registry.get_type(ctr.container)
+    }
+
+    if match Type::Seg(seg) = lhs_type {
+        if field_access.field_name.repr.equals("ptr") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::Pointer(heap::new!(PointerType {
+                    pointee: seg.item,
+                    is_sequence: true,
+                    is_nullable: false,
+                }))),
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        if field_access.field_name.repr.equals("len") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::U32),
+                field_index: 1,
+                byte_offset: 4,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    if match Type::Result(result) = lhs_type {
+        if field_access.field_name.repr.equals("ok") {
+            return Ok(StructFieldInfo {
+                field_type_id: result.ok,
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        if field_access.field_name.repr.equals("err") {
+            let ok_layout = ref!(TypeLayout::new())
+            Typer::get_type_layout(registry, registry.get_type(result.ok), ok_layout)
+
+            return Ok(StructFieldInfo {
+                field_type_id: result.err,
+                field_index: ok_layout.primitives_count,
+                byte_offset: ok_layout.byte_size,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    if match Type::Enum(_) = lhs_type {
+        if field_access.field_name.repr.equals("tag") {
+            return Ok(StructFieldInfo {
+                field_type_id: registry.intern_type(Type::U32),
+                field_index: 0,
+                byte_offset: 0,
+                loc: null,
+            })
+        }
+
+        let message = String::from_str_in(registry.error_arena, "Unknown field `")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "` in `",
+            registry.fmt(lhs_type),
+            "`",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    match Type::Struct(struct_type) = lhs_type else {
+        let message = String::from_str_in(registry.error_arena, "Cannot get field '")
+        do message.push_str(it) with (
+            field_access.field_name.repr,
+            "' on non struct: ",
+            registry.fmt(lhs_type),
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: field_access.field_name.loc,
+        }))
+    }
+
+    let struct_def = registry.structs.at!(struct_type.struct_index)
+
+    for &field in struct_def.fields.iter!() {
+        if field.field_name.equals(field_access.field_name.repr) {
+            return Ok(StructFieldInfo {
+                field_type_id: field.field_type_id,
+                field_index: field.field_index,
+                byte_offset: field.byte_offset,
+                loc: &field.loc,
+            })
+        }
+    }
+
+    let message = String::from_str_in(registry.error_arena, "Unknown field `")
+    do message.push_str(it) with (
+        field_access.field_name.repr,
+        "` in struct `",
+        struct_def.struct_name,
+        "`",
+    )
+
+    return Err(registry.error_arena.new!(Error {
+        message: message,
+        loc: field_access.field_name.loc,
+    }))
+}
+
+fn Typer::resolve_str_literal_type(&self) {
+    // fallback
+    self.registry.str_literal_type_id = heap::new!(
+        self.intern_type(Type::Seg(heap::new!(SegType {
+            item: self.intern_type(Type::U8),
+        }))),
+    )
+
+    let slt_def = null as &?TypeExpr
+
+    for module_id in self.registry.module_import_order.iter!() {
+        let ctx = self.module_info.get!(module_id).ctx
+        let module = self.registry.modules.get!(module_id)
+
+        for expr in module.parser.ast.iter!() {
+            if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+                if !intrinsic.fn_name.repr.equals("str_literal_type") {
+                    continue
+                }
+
+                if intrinsic.type_args.len != 1 || intrinsic.args.items.len != 0 {
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: String::from_str_in(
+                            self.registry.error_arena,
+                            "Invalid call, expected signature: @<T>str_literal_type()",
+                        ),
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                if slt_def != null {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot redefine str literal type, first defined at ",
+                    )
+                    message.push_str(
+                        (*slt_def).loc().to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+                slt_def = heap::new!(intrinsic.type_args.get!(0))
+
+                let type_id_result = self.build_type(ctx, *slt_def)
+                if type_id_result.err as u32 != 0 {
+                    self.report_error(type_id_result.err)
+                } else {
+                    let type_id = type_id_result.ok
+                    let slt_components = self.get_primitives(self.get_type(type_id))
+
+                    let expected_components = Vec::new!<Type>()
+                    expected_components.push!(Type::U32)
+                    expected_components.push!(Type::U32)
+
+                    if !Typer::is_noop_cast(slt_components, expected_components) {
+                        self.report_error(self.registry.error_arena.new!(Error {
+                            message: String::from_str_in(
+                                self.registry.error_arena,
+                                "str literal type must be compatible with (u32, u32)",
+                            ),
+                            loc: (*slt_def).loc(),
+                        }))
+                    }
+
+                    self.registry.str_literal_type_id = heap::new!(type_id)
+                }
+            }
+        }
+    }
+}
+
+fn Typer::process_top_level_exprs(&self, ctx: &TyContext) {
+    let module = self.registry.modules.get!(ctx.module_id)
+
+    for expr in module.parser.ast.iter!() {
+        if match TopLevelExpr::TypeDef(_) = expr {
+            continue // skip, processed in previous passes
+        }
+
+        if match TopLevelExpr::Fn(fn_def) = expr {
+            if fn_def.is_inline {
+                continue // skip, processed in pass_collect_all_symbols
+            }
+
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+            if symbol.kind != TySymbolKind::Function {
+                continue
+            }
+
+            self.resolve_fn_signature(ctx, fn_def.decl, symbol.col_index)
+        }
+
+        if match TopLevelExpr::Let(let_expr) = expr {
+            let symbol = self.get_symbol(ctx, let_expr.name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+
+            if !let_expr.is_inline {
+                let const_result = self.get_const_value_or_err(ctx, let_expr.value)
+                if const_result.err as u32 != 0 {
+                    continue
+                }
+            }
+
+            let value_type_id = self.type_code_expr_and_load(ctx, let_expr.value) catch err {
+                self.report_error(err)
+                continue
+            }
+
+            if let_expr.is_inline {
+                let const_def = self.registry.constants.at!(symbol.col_index)
+                const_def.type_id = value_type_id
+
+                if self.reporter.in_inspection_mode {
+                    let message = String::new_in(self.reporter.inspection_arena, 32)
+                    do message.push_str(it) with (
+                        "inline let ",
+                        let_expr.name.repr,
+                        ": ",
+                        self.registry.fmt(self.get_type(value_type_id)),
+                    )
+
+                    self.reporter.print_inspection(InspectInfo {
+                        message: message,
+                        loc: let_expr.name.loc,
+                        linked_loc: null,
+                    })
+                }
+
+                continue
+            }
+
+            if symbol.kind != TySymbolKind::Global {
+                continue
+            }
+
+            let global = self.registry.globals.at!(symbol.col_index)
+            global.type_id = value_type_id
+
+            if self.reporter.in_inspection_mode {
+                let global_name = let_expr.name.repr
+
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    "let ",
+                    global_name,
+                    ": ",
+                    self.registry.fmt(self.get_type(value_type_id)),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: let_expr.name.loc,
+                    linked_loc: null,
+                })
+            }
+        }
+
+        if match TopLevelExpr::Intrinsic(intrinsic) = expr {
+            if intrinsic.fn_name.repr.equals("include") {
+                continue // skip, was processed in `Compiler.include`
+            }
+
+            if intrinsic.fn_name.repr.equals("str_literal_type") {
+                continue // skip, was processed in `pass_get_str_literal_type`
+            }
+
+            if intrinsic.fn_name.repr.equals("use_memory") {
+                if self.registry.memory_info != null {
+                    let existing_memory = *self.registry.memory_info
+
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot redefine memory, first defined at ",
+                    )
+                    message.push_str(
+                        existing_memory.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.loc,
+                    }))
+                    continue
+                }
+
+                if intrinsic.type_args.len != 0 {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                let memory = heap::new!(MemoryInfo {
+                    min_pages: null,
+                    data_start: null,
+                    exported: false,
+                    imported_from: null,
+                    loc: intrinsic.loc,
+                })
+
+                for arg in intrinsic.args.items.iter!() {
+                    if match CodeExpr::Ident(ident) = arg {
+                        if ident.repr.equals("exported") {
+                            memory.exported = true
+                            continue
+                        }
+                    }
+
+                    match CodeExpr::Assign(assign) = arg else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    match CodeExpr::Ident(key) = assign.lhs else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    if key.repr.equals("data_start") {
+                        let const_result = self.get_const_value_or_err(ctx, assign.rhs)
+
+                        let is_bad = true
+                        if const_result.err as u32 == 0 {
+                            if match CodeExpr::IntLiteral(int_lit) = const_result.ok {
+                                if int_lit.tag == null {
+                                    memory.data_start = heap::new!(int_lit.value as u32)
+                                    self.registry.data_size = int_lit.value as u32
+                                    is_bad = false
+                                }
+                            }
+                        }
+
+                        if is_bad {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        }
+
+                        continue
+                    }
+
+                    if key.repr.equals("min_pages") {
+                        let const_result = self.get_const_value_or_err(ctx, assign.rhs)
+
+                        let is_bad = true
+                        if const_result.err as u32 == 0 {
+                            if match CodeExpr::IntLiteral(int_lit) = const_result.ok {
+                                if int_lit.tag == null {
+                                    memory.min_pages = heap::new!(int_lit.value as u32)
+                                    is_bad = false
+                                }
+                            }
+                        }
+
+                        if is_bad {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        }
+
+                        continue
+                    }
+
+                    if key.repr.equals("import_from") {
+                        match CodeExpr::StringLiteral(str_expr) = assign.rhs else {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                            continue
+                        }
+
+                        memory.imported_from = heap::new!(str_expr.value.clone())
+                        continue
+                    }
+
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                if self.forbid_memory_loc != null {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot both forbid and define a memory, forbidden at ",
+                    )
+                    message.push_str(
+                        (*self.forbid_memory_loc).to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                self.registry.memory_info = memory
+
+                continue
+
+                fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+                    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+                    do message.push_str(it) with (
+                        fn_name.repr,
+                        "([min_pages = <u32>, data_start = <u32>, exported, import_from = <str-literal>])",
+                    )
+
+                    return arena.new!(Error {
+                        message: message,
+                        loc: fn_name.loc,
+                    })
+                }
+            }
+
+            if intrinsic.fn_name.repr.equals("export_existing") {
+                let from_root = false
+                let in_name = null as &?IdentExpr
+                let out_name = null as &?StringLiteralExpr
+
+                if intrinsic.type_args.len != 0 {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                for arg in intrinsic.args.items.iter!() {
+                    if match CodeExpr::Ident(ident) = arg {
+                        if ident.repr.equals("from_root") {
+                            from_root = true
+                            continue
+                        }
+
+                        in_name = ident
+                        continue
+                    }
+
+                    match CodeExpr::Assign(assign) = arg else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    match CodeExpr::Ident(key) = assign.lhs else {
+                        self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                        continue
+                    }
+
+                    if key.repr.equals("out") {
+                        match CodeExpr::StringLiteral(value) = assign.rhs else {
+                            self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                            continue
+                        }
+
+                        out_name = value
+                        continue
+                    }
+
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                }
+
+                if in_name == null {
+                    self.report_error(bad_signature(self.registry.error_arena, intrinsic.fn_name))
+                    continue
+                }
+
+                let target_ctx = ctx
+                if from_root {
+                    target_ctx = self.module_info.get!(1).ctx
+                }
+
+                let fn_index_result = self.get_fn_index_for_call(target_ctx, (*in_name).repr, (*in_name).loc)
+                if fn_index_result.err as u32 != 0 {
+                    // don't report any errors if function to be exported
+                    //   could be in another module but only one module is inspected
+                    if from_root && self.reporter.in_inspection_mode {
+                        continue
+                    }
+
+                    self.report_error(fn_index_result.err)
+                    continue
+                }
+                let fn_index = fn_index_result.ok
+                let fn_info = self.registry.functions.at!(fn_index)
+
+                if self.reporter.in_inspection_mode {
+                    self.reporter.print_inspection(InspectInfo {
+                        message: String::from_str_in(self.reporter.inspection_arena, (*in_name).repr),
+                        loc: (*in_name).loc,
+                        linked_loc: &fn_info.definition_loc,
+                    })
+                }
+
+                let exported_as = String::from_str((*in_name).repr)
+                if out_name != null {
+                    exported_as = (*out_name).value.clone()
+                }
+
+                fn_info.exported_as.push!(exported_as)
+
+                continue
+
+                fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+                    let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+                    do message.push_str(it) with (
+                        fn_name.repr,
+                        "(<ident>, [out = <str-literal>, from_root])",
+                    )
+
+                    return arena.new!(Error {
+                        message: message,
+                        loc: fn_name.loc,
+                    })
+                }
+            }
+
+            if intrinsic.fn_name.repr.equals("forbid_memory") {
+                if self.registry.memory_info != null {
+                    let existing_memory = *self.registry.memory_info
+
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Cannot both forbid and define a memory, defined at ",
+                    )
+                    message.push_str(
+                        existing_memory.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: intrinsic.fn_name.loc,
+                    }))
+                    continue
+                }
+
+                self.forbid_memory_loc = heap::new!(intrinsic.fn_name.loc)
+                continue
+            }
+
+            if intrinsic.fn_name.repr.equals("inspect_stats") {
+                // skip, will be processed in `run_delayed_actions`
+                continue
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Unknown intrinsic: ")
+            message.push_str(intrinsic.fn_name.repr)
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: intrinsic.loc,
+            }))
+        }
+    }
+}
+
+fn Typer::resolve_fn_signature(&self, ctx: &TyContext, fn_decl: FnDeclExpr, fn_index: u32) {
+    let fn_info = self.registry.functions.at!(fn_index)
+
+    let self_type_id = self.get_fn_self_type(ctx, fn_decl.fn_name, fn_decl.params) catch err {
+        self.report_error(err)
+        return
+    }
+
+    if fn_decl.return_type != null {
+        let type_id = self.build_type(ctx, *fn_decl.return_type) catch err {
+            self.report_error(err)
+            return
+        }
+
+        fn_info.type_.output = type_id
+    }
+
+    for &fn_param in fn_decl.params.iter!() {
+        if fn_param.param_name.repr.equals("_") {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid fn param name `_` is not allowed here",
+                ),
+                loc: fn_param.param_name.loc,
+            }))
+        }
+
+        let param_type_id = self.get_fn_param_type(ctx, fn_param, self_type_id, false) catch err {
+            self.report_error(err)
+            continue
+        }
+
+        fn_info.type_.inputs.push!(param_type_id)
+
+        fn_info.params.push!(FnParameter {
+            param_name: &fn_param.param_name,
+            param_type_id: param_type_id,
+        })
+    }
+}
+
+fn Typer::get_fn_param_type(
+    &self,
+    ctx: &TyContext,
+    fn_param: &FnParam,
+    self_type_id: &?TypeId,
+    infer_allowed: bool,
+): Result(TypeId, &Error) {
+    if match FnParamType::Self(_) = fn_param.param_type {
+        return Ok(*self_type_id)
+    }
+
+    if match FnParamType::SelfRef(_) = fn_param.param_type {
+        return Ok(self.intern_type(Type::Pointer(heap::new!(PointerType {
+            pointee: *self_type_id,
+            is_sequence: false,
+            is_nullable: false,
+        }))))
+    }
+
+    if match FnParamType::Type(param_type) = fn_param.param_type {
+        let infer_type_name = Typer::get_infer_type_name(self.registry, fn_param)?
+        if infer_type_name != null {
+            if !infer_allowed {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Infer is only allowed in inline fns",
+                    ),
+                    loc: fn_param.param_name.loc,
+                }))
+            }
+
+            return self.get_type_id_or_err(ctx, *infer_type_name, fn_param.param_name.loc)
+        }
+
+        return self.build_type(ctx, param_type.expr)
+    }
+
+    todo!()
+}
+
+// TODO(memory)!: fix this returning heap alloced and never freed TypeId instead of optional
+fn Typer::get_fn_self_type(
+    &self,
+    ctx: &TyContext,
+    fn_name: IdentExpr,
+    fn_params: &Vec(FnParam),
+): Result(&?TypeId, &Error) {
+    let has_self_param = false
+    for fn_param in fn_params.iter!() {
+        let is_self_param = false
+        if match FnParamType::Self(_) = fn_param.param_type {
+            is_self_param = true
+        }
+        if match FnParamType::SelfRef(_) = fn_param.param_type {
+            is_self_param = true
+        }
+        if !is_self_param {
+            continue
+        }
+
+        has_self_param = true
+
+        if fn_name.parts.len == 1 {
+            return Err(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot use self param in non-method function",
+                ),
+                loc: fn_param.loc,
+            }))
+        }
+    }
+    if !has_self_param {
+        return Ok(null)
+    }
+
+    let fn_module = self.registry.modules.get!(fn_name.loc.module_id)
+
+    let self_type_loc = fn_name.parts.get!(0)
+    self_type_loc.end_pos = fn_name.parts.get!(fn_name.parts.len - 2).end_pos
+
+    let self_type_name = self_type_loc.read_span(fn_module.source)
+
+    // this workaround is needed because `seg` itself is not a valid type
+    if self_type_name.equals("seg") {
+        return Ok(heap::new!(self.intern_type(Type::Seg(heap::new!(SegType {
+            item: self.intern_type(Type::Never),
+        })))))
+    }
+
+    // this workaround is needed because `Result` itself is not a valid type
+    if self_type_name.equals("Result") {
+        return Ok(heap::new!(self.intern_type(Type::Result(heap::new!(ResultType {
+            ok: self.intern_type(Type::Never),
+            err: self.intern_type(Type::Never),
+        })))))
+    }
+
+    let self_type_id = self.get_type_id_or_err(ctx, self_type_name, self_type_loc)?
+
+    return Ok(heap::new!(self_type_id))
+}
+
+fn Typer::type_fns(&self) {
+    for fn_index in 0..self.registry.functions.len {
+        match FnSource::Guest(fn_info) = self.registry.functions.get!(fn_index).source else {
+            continue
+        }
+
+        let module_ctx = self.module_info.get!(fn_info.module_id).ctx
+        self.type_fn(module_ctx, fn_index)
+    }
+}
+
+fn Typer::type_fn(&self, parent_ctx: &TyContext, fn_index: u32) {
+    let fn_def = self.registry.functions.at!(fn_index)
+
+    match FnSource::Guest(fn_info) = fn_def.source else {
+        return
+    }
+
+    let ctx = self.child_ctx(parent_ctx, ScopeKind::Function)
+    ctx.fn_index = &fn_info.lo_fn_index
+
+    for param in fn_def.params.iter!() {
+        let _ = self.define_local(
+            ctx,
+            &param.param_name.repr,
+            param.param_type_id,
+            param.param_name.loc,
+            param.param_name.id,
+            true,
+        )
+    }
+
+    let _ = self.type_code_block(ctx, fn_info.body, true)
+}
+
+fn Typer::run_delayed_actions(&self) {
+    if self.registry.memory_info == null && self.autodefine_memory {
+        self.registry.memory_info = heap::new!(MemoryInfo {
+            min_pages: heap::new!(1u32),
+            data_start: null,
+            exported: false,
+            imported_from: null,
+            loc: Loc::internal(),
+        })
+    }
+}
+
+fn Typer::alloc_str(&self, value: String): str {
+    let str_ref = value.as_str()
+    self.allocated_strings.push!(value)
+    return str_ref
+}
+
+// defines nested fn symbols, bodies are typed later, see `type_code_block`.
+fn Typer::collect_nested_fns(&self, ctx: &TyContext, exprs: &Vec(CodeExpr)) {
+    for expr in exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            match FnExprValue::Body(body) = fn_def.value else {
+                @unreachable()
+            }
+
+            let _ = self.define_symbol(
+                ctx,
+                fn_def.decl.fn_name.repr,
+                TySymbolKind::Function,
+                fn_def.decl.fn_name.loc,
+            )
+
+            let parent_fn_name = self.registry.functions.at!(*ctx.fn_index).name
+            let full_fn_name = String::from_str(parent_fn_name)
+            full_fn_name.push_str("/")
+            full_fn_name.push_str(fn_def.decl.fn_name.repr)
+
+            let fn_index = self.registry.functions.len
+            self.registry.functions.push!(FnInfo {
+                name: self.alloc_str(full_fn_name),
+                type_: FnType {
+                    inputs: Vec::new!<TypeId>(),
+                    output: self.intern_type(Type::Void),
+                },
+                params: Vec::new!<FnParameter>(),
+                source: FnSource::Guest(heap::new!(FnSourceGuest {
+                    module_id: ctx.module_id,
+                    lo_fn_index: fn_index,
+                    body: body,
+                })),
+                exported_as: Vec::new!<String>(),
+                locals_ids: Vec::new!<u32>(),
+                wasm_fn_index: u32::MAX, // placeholder
+                wasm_locals_count: 0,
+                definition_loc: fn_def.decl.fn_name.loc,
+            })
+        }
+    }
+
+    for expr in exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            if symbol == null {
+                @unreachable()
+            }
+            if symbol.kind != TySymbolKind::Function {
+                continue
+            }
+
+            self.resolve_fn_signature(ctx, fn_def.decl, symbol.col_index)
+        }
+    }
+}
+
+fn Typer::type_code_block(
+    &self,
+    ctx: &TyContext,
+    block: &CodeBlock,
+    void_only: bool,
+): Type {
+    self.collect_nested_fns(ctx, block.exprs)
+
+    let diverges = false
+    let diverges_naturally = false
+
+    for expr in block.exprs.iter!() {
+        if match CodeExpr::Fn(_) = expr {
+            continue // skip as this is a declaration and not a code expression
+        }
+
+        if diverges {
+            self.reporter.warning(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(self.registry.error_arena, "Unreachable expression"),
+                loc: expr.loc(),
+            }))
+        }
+
+        let type_id = self.type_code_expr_and_load(ctx, expr) catch err {
+            self.report_error(err)
+            continue
+        }
+
+        let expr_type = self.get_type(type_id)
+
+        if Typer::count_primitive_components(self.registry, expr_type) > 0 && void_only {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Non void expression in block. Use `let _ = <expr>` to ignore expression result.",
+                ),
+                loc: expr.loc(),
+            }))
+        }
+
+        if expr_type.equals(Type::Never) {
+            diverges = true
+            diverges_naturally = diverges_naturally || Typer::is_naturally_divergent(expr)
+        }
+    }
+
+    // typed after this block's own variables are declared so it errors
+    // in `get_value_info` with a "forbidden access" error instead of "unknown variable"
+    for expr in block.exprs.iter!() {
+        if match CodeExpr::Fn(fn_def) = expr {
+            let symbol = self.get_symbol(ctx, fn_def.decl.fn_name.repr)
+            self.type_fn(ctx, symbol.col_index)
+        }
+    }
+
+    if !diverges_naturally && !diverges && ctx.kind == ScopeKind::Function {
+        let fn_info = self.registry.functions.get!(*ctx.fn_index)
+        if !self.get_type(fn_info.type_.output).equals(Type::Void) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                // error message stolen from clang
+                message: String::from_str_in(self.registry.error_arena, "Control reaches end of non-void function"),
+                loc: fn_info.definition_loc,
+            }))
+        }
+    }
+
+    self.store_expr_info(ctx, block.block_expr_id, self.registry.block_info.len)
+    self.registry.block_info.push!(BlockInfo {
+        needs_explicit_trap: void_only && diverges && !diverges_naturally,
+    })
+
+    if diverges {
+        return Type::Never
+    }
+
+    return Type::Void
+}
+
+fn Typer::type_code_expr_and_load(&self, ctx: &TyContext, expr: CodeExpr): Result(TypeId, &Error) {
+    self.type_code_expr(ctx, expr)?
+
+    let type_id = self.load_type(ctx, expr)
+    if type_id == null {
+        self.reporter.abort_due_to_compiler_bug(
+            "Expression should only return ok if it stored a type",
+            expr.loc(),
+        )
+    }
+
+    return Ok(*type_id)
+}
+
+fn Typer::type_code_expr(&self, ctx: &TyContext, expr: CodeExpr): Result(void, &Error) {
+    if match CodeExpr::BoolLiteral(bool_literal) = expr {
+        self.store_type(ctx, bool_literal.id, Type::Bool)
+        return Ok()
+    }
+
+    if match CodeExpr::CharLiteral(char_literal) = expr {
+        self.store_type(ctx, char_literal.id, Type::U8)
+        return Ok()
+    }
+
+    if match CodeExpr::NullLiteral(null_literal) = expr {
+        self.store_type(ctx, null_literal.id, Type::Null)
+        return Ok()
+    }
+
+    if match CodeExpr::IntLiteral(int_literal) = expr {
+        if int_literal.tag == null {
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+
+        let tag_type_id_result = self.get_type_id_or_err(ctx, *int_literal.tag, int_literal.loc)
+        if tag_type_id_result.err as u32 != 0 {
+            self.report_error(tag_type_id_result.err)
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+        let tag_type_id = tag_type_id_result.ok
+
+        let tag_type = self.get_type(tag_type_id)
+        let wide_result = Typer::is_wide_int_tag(self.registry, tag_type, int_literal.loc)
+        if wide_result.err as u32 != 0 {
+            self.report_error(wide_result.err)
+            self.store_type(ctx, int_literal.id, Type::U32)
+            return Ok()
+        }
+
+        self.store_expr_info(ctx, int_literal.id, tag_type_id)
+
+        return Ok()
+    }
+
+    if match CodeExpr::StringLiteral(str_literal) = expr {
+        self.process_memory_op(str_literal.loc)
+
+        let bytes_info = self.process_const_string(str_literal.value.as_str())
+
+        self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len)
+        self.registry.stored_bytes.push!(StoredExprBytes {
+            info: bytes_info,
+            expr_type_id: *self.registry.str_literal_type_id,
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::StructLiteral(struct_literal) = expr {
+        for field in struct_literal.body.fields.iter!() {
+            self.report_if_err!(self.type_code_expr(ctx, field.value))
+        }
+
+        let symbol = self.get_symbol(ctx, struct_literal.struct_name.repr)
+        if symbol == null {
+            let message = String::from_str_in(self.registry.error_arena, "Unknown struct: ")
+            message.push_str(struct_literal.struct_name.repr)
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.loc,
+            }))
+        }
+        if symbol.kind != TySymbolKind::Struct {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Struct name expected, got symbol ",
+            )
+            message.push_str(struct_literal.struct_name.repr)
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.loc,
+            }))
+        }
+        let struct_index = symbol.col_index
+
+        if self.reporter.in_inspection_mode {
+            self.reporter.print_inspection(InspectInfo {
+                message: String::from_str_in(self.reporter.inspection_arena, "struct { ... }"),
+                loc: struct_literal.struct_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        self.store_type(ctx, struct_literal.id, Type::Struct(heap::new!(StructType {
+            struct_index: struct_index,
+        })))
+
+        let struct_def = self.registry.structs.at!(struct_index)
+
+        for field_index in 0..struct_literal.body.fields.len {
+            let field_literal = struct_literal.body.fields.get!(field_index)
+
+            if field_index >= struct_def.fields.len {
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Excess field values"),
+                    loc: field_literal.key_loc,
+                }))
+                continue
+            }
+            let struct_field = struct_def.fields.at!(field_index)
+
+            if !field_literal.key.equals(struct_field.field_name) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Unexpected struct field name, expecting: `",
+                )
+                do message.push_str(it) with (struct_field.field_name, "`")
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field_literal.key_loc,
+                }))
+            }
+
+            let field_value_type_id = self.load_type(ctx, field_literal.value)
+            if field_value_type_id == null {
+                continue
+            }
+            let field_value_type = self.get_type(*field_value_type_id)
+
+            if !self.is_type_compatible(self.get_type(struct_field.field_type_id), field_value_type) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid type for struct field ",
+                )
+                do message.push_str(it) with (
+                    struct_literal.struct_name.repr,
+                    ".",
+                    struct_field.field_name,
+                    ", expected: ",
+                    self.registry.fmt(self.get_type(struct_field.field_type_id)),
+                    ", got: ",
+                    self.registry.fmt(field_value_type),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: field_literal.value.loc(),
+                }))
+            }
+
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    struct_literal.struct_name.repr,
+                    ".",
+                    struct_field.field_name,
+                    ": ",
+                    self.registry.fmt(field_value_type),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: field_literal.key_loc,
+                    linked_loc: &struct_field.loc,
+                })
+            }
+        }
+
+        if struct_literal.body.fields.len < struct_def.fields.len {
+            let missing_fields = Vec::new!<str>()
+            for struct_field in struct_def.fields.iter!() {
+                let is_provided = false
+
+                for provided_field in struct_literal.body.fields.iter!() {
+                    if provided_field.key.equals(struct_field.field_name) {
+                        is_provided = true
+                        break
+                    }
+                }
+
+                if !is_provided {
+                    missing_fields.push!(struct_field.field_name)
+                }
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Missing struct fields: ")
+            for i in 0..missing_fields.len {
+                if i != 0 {
+                    message.push_str(", ")
+                }
+                message.push_str(missing_fields.get!(i))
+            }
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: struct_literal.struct_name.loc,
+            }))
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::ArrayLiteral(array_literal) = expr {
+        self.process_memory_op(array_literal.loc)
+
+        let item_type_id = self.build_type(ctx, array_literal.item_type)?
+        let item_type = self.get_type(item_type_id)
+
+        let bytes = Vec::new!<u8>()
+
+        for item_expr in array_literal.items.iter!() {
+            let current_item_type_id_result = self.type_code_expr_and_load(ctx, item_expr)
+            if current_item_type_id_result.err as u32 != 0 {
+                self.report_error(current_item_type_id_result.err)
+                continue
+            }
+            let current_item_type = self.get_type(current_item_type_id_result.ok)
+
+            if !self.is_type_compatible(item_type, current_item_type) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Unexpected array element type: ",
+                )
+                message.push_str(self.registry.fmt(current_item_type))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(item_type))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: item_expr.loc(),
+                }))
+                continue
+            }
+
+            self.report_if_err!(self.push_const_expr_bytes(bytes, item_expr, item_type))
+        }
+
+        let bytes_info = self.append_data(bytes.iter!())
+
+        // seg.len is an amount of elements, not total byte size
+        bytes_info.len = array_literal.items.len
+
+        self.store_expr_info(ctx, array_literal.id, self.registry.stored_bytes.len)
+        self.registry.stored_bytes.push!(StoredExprBytes {
+            info: bytes_info,
+            expr_type_id: self.intern_type(Type::Seg(heap::new!(SegType { item: item_type_id }))),
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::ResultLiteral(result_literal) = expr {
+        let value_type = Type::Void
+
+        if result_literal.value != null {
+            let value_result = self.type_code_expr_and_load(ctx, *result_literal.value)
+            if value_result.err as u32 != 0 {
+                self.report_error(value_result.err)
+            } else {
+                value_type = self.get_type(value_result.ok)
+            }
+        }
+
+        let result = self.get_result_literal_type(ctx, result_literal.result_type, result_literal.loc)?
+        let ok = self.get_type(result.ok)
+        let err = self.get_type(result.err)
+
+        if result_literal.is_ok && !self.is_type_compatible(ok, value_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create result, Ok type mismatch. Got ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(value_type),
+                ", expected: ",
+                self.registry.fmt(ok),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: result_literal.loc,
+            }))
+        }
+
+        if !result_literal.is_ok && !self.is_type_compatible(err, value_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create result, Err type mismatch. Got ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(value_type),
+                ", expected: ",
+                self.registry.fmt(err),
+            )
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: result_literal.loc,
+            }))
+        }
+
+        self.store_type(ctx, result_literal.id, Type::Result(heap::new!(result)))
+
+        return Ok()
+    }
+
+    if match CodeExpr::Ident(ident) = expr {
+        let value_info = self.get_value_info(ctx, *ident)?
+        self.registry.value_info.push!(value_info)
+
+        self.store_expr_info(ctx, ident.id, self.registry.value_info.len - 1)
+        return Ok()
+    }
+
+    if match CodeExpr::Let(let_expr) = expr {
+        let value_result = self.type_code_expr(ctx, let_expr.value)
+        if value_result.err as u32 != 0 {
+            self.report_error(value_result.err)
+        }
+
+        let value_type_id_ptr = self.load_type(ctx, let_expr.value)
+        if value_type_id_ptr == null {
+            self.store_type(ctx, let_expr.id, Type::Void)
+            return Ok()
+        }
+        let value_type_id = *value_type_id_ptr
+
+        if self.get_type(value_type_id).equals(Type::Never) {
+            self.store_type(ctx, let_expr.id, Type::Never)
+        } else {
+            self.store_type(ctx, let_expr.id, Type::Void)
+        }
+
+        let _ = self.define_local(
+            ctx,
+            &let_expr.name.repr,
+            value_type_id,
+            let_expr.name.loc,
+            let_expr.name.id,
+            false,
+        )
+        return Ok()
+    }
+
+    if match CodeExpr::Fn(_) = expr {
+        @unreachable() // skipped in `type_code_block`
+    }
+
+    if match CodeExpr::Assign(assign) = expr {
+        let lhs_result = self.type_code_expr_and_load(ctx, assign.lhs)
+        if lhs_result.err as u32 != 0 {
+            self.report_error(lhs_result.err)
+        }
+
+        let rhs_result = self.type_code_expr_and_load(ctx, assign.rhs)
+        if rhs_result.err as u32 != 0 {
+            self.report_error(rhs_result.err)
+        }
+
+        if lhs_result.err as u32 == 0 && rhs_result.err as u32 == 0 {
+            if !self.is_type_compatible(self.get_type(lhs_result.ok), self.get_type(rhs_result.ok)) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot assign ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(rhs_result.ok)),
+                    " to variable of type ",
+                    self.registry.fmt(self.get_type(lhs_result.ok)),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: assign.op_loc,
+                }))
+            }
+        }
+
+        self.store_type(ctx, assign.id, Type::Void)
+
+        if lhs_result.err as u32 == 0 {
+            self.process_var_write(ctx, assign.lhs)?
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::InfixOp(infix_op) = expr {
+        let lhs_type_id_res = self.type_code_expr_and_load(ctx, infix_op.lhs)
+        let rhs_type_id = self.type_code_expr_and_load(ctx, infix_op.rhs)?
+        let lhs_type_id = lhs_type_id_res?
+
+        if !self.is_type_compatible(self.get_type(lhs_type_id), self.get_type(rhs_type_id)) {
+            let message = String::new_in(self.registry.error_arena, 16)
+            do message.push_str(it) with (
+                "Operands are not of the same type: lhs = ",
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ", rhs = ",
+                self.registry.fmt(self.get_type(rhs_type_id)),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: infix_op.op_loc,
+            }))
+        }
+
+        let result_type_id = lhs_type_id
+        if infix_op.op_tag == InfixOpTag::Equal \
+            || infix_op.op_tag == InfixOpTag::NotEqual \
+            || infix_op.op_tag == InfixOpTag::Less \
+            || infix_op.op_tag == InfixOpTag::Greater \
+            || infix_op.op_tag == InfixOpTag::LessEqual \
+            || infix_op.op_tag == InfixOpTag::GreaterEqual \
+            || infix_op.op_tag == InfixOpTag::And \
+            || infix_op.op_tag == InfixOpTag::Or
+        {
+            result_type_id = self.intern_type(Type::Bool)
+        }
+        if infix_op.op_tag == InfixOpTag::AddAssign \
+            || infix_op.op_tag == InfixOpTag::SubAssign \
+            || infix_op.op_tag == InfixOpTag::MulAssign \
+            || infix_op.op_tag == InfixOpTag::DivAssign \
+            || infix_op.op_tag == InfixOpTag::ModAssign \
+            || infix_op.op_tag == InfixOpTag::BitAndAssign \
+            || infix_op.op_tag == InfixOpTag::BitOrAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftLeftAssign \
+            || infix_op.op_tag == InfixOpTag::ShiftRightAssign
+        {
+            result_type_id = self.intern_type(Type::Void)
+        }
+
+        let is_compound_assignment = false
+        let base_op = infix_op.op_tag
+
+        let base_op_result = self.get_compound_assignment_base_op(infix_op.op_tag)
+        if base_op_result.err as u32 == 0 {
+            is_compound_assignment = true
+            base_op = base_op_result.ok
+
+            self.process_var_write(ctx, infix_op.lhs)?
+        }
+
+        let op_kind = self.get_binary_op_kind(
+            ctx,
+            base_op,
+            self.get_type(lhs_type_id),
+            infix_op.op_loc,
+        )?
+
+        self.store_expr_info(ctx, infix_op.id, self.registry.binary_op_info.len)
+        self.registry.binary_op_info.push!(BinaryOpInfo {
+            is_compound_assignment: is_compound_assignment,
+            op_kind: op_kind,
+            result_type_id: result_type_id,
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            ctx.is_expr_referenced = true
+        }
+
+        let expr_type_id = self.type_code_expr_and_load(ctx, prefix_op.expr)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if prefix_op.op_tag == PrefixOpTag::Not {
+            if Typer::count_primitive_components(self.registry, self.get_type(expr_type_id)) != 1 {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot apply not operation to expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Bool)
+            return Ok()
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            match Type::Pointer(ptr) = self.get_type(expr_type_id) else {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot dereference expr of type ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(expr_type_id)))
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.process_memory_op(prefix_op.loc)
+
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    "<deref>: ",
+                    self.registry.fmt(self.get_type(ptr.pointee)),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: prefix_op.op_loc,
+                    linked_loc: null,
+                })
+            }
+
+            self.store_expr_info(ctx, prefix_op.id, ptr.pointee)
+            return Ok()
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Positive || prefix_op.op_tag == PrefixOpTag::Negative {
+            let expr_type = self.get_type(expr_type_id)
+
+            if match Type::U8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::I8(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I8)
+                return Ok()
+            }
+            if match Type::U16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::I16(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I16)
+                return Ok()
+            }
+            if match Type::U32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::I32(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I32)
+                return Ok()
+            }
+            if match Type::U64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+            if match Type::I64(_) = expr_type {
+                self.store_type(ctx, prefix_op.id, Type::I64)
+                return Ok()
+            }
+
+            let message = String::from_str_in(self.registry.error_arena, "Integer expected. Got ")
+            message.push_str(self.registry.fmt(expr_type))
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: prefix_op.op_loc,
+            }))
+        }
+
+        if prefix_op.op_tag == PrefixOpTag::Reference {
+            let var = self.get_variable_kind(ctx, prefix_op.expr) catch _ {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            if var != VariableKind::ReadWriteStored {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid reference expression. Only struct reference fields allowed.",
+                    ),
+                    loc: prefix_op.expr.loc(),
+                }))
+            }
+
+            self.store_type(ctx, prefix_op.id, Type::Pointer(heap::new!(PointerType {
+                pointee: expr_type_id,
+                is_sequence: false,
+                is_nullable: false,
+            })))
+
+            return Ok()
+        }
+
+        @unreachable()
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        let castee_result = self.type_code_expr_and_load(ctx, cast.expr)
+
+        let casted_to_type_id = self.build_type(ctx, cast.casted_to)?
+        let casted_to_type = self.get_type(casted_to_type_id)
+
+        if castee_result.err as u32 != 0 {
+            self.report_error(castee_result.err)
+        } else {
+            let castee_type = self.get_type(castee_result.ok)
+
+            let castee_type_components = self.get_primitives(castee_type)
+            let casted_to_type_components = self.get_primitives(casted_to_type)
+
+            let noop_local_cast = Typer::is_noop_cast(castee_type_components, casted_to_type_components)
+
+            let single_int_cast = false
+            if castee_type_components.len == 1 && casted_to_type_components.len == 1 {
+                let p1_wide = Typer::is_wide_int(castee_type_components.get!(0))
+                let p2_wide = Typer::is_wide_int(casted_to_type_components.get!(0))
+                single_int_cast = p1_wide.err as u32 == 0 && p2_wide.err as u32 == 0
+            }
+
+            if !(single_int_cast || noop_local_cast) {
+                let message = String::from_str_in(self.registry.error_arena, "Cannot cast from ")
+                do message.push_str(it) with (
+                    self.registry.fmt(castee_type),
+                    " to ",
+                    self.registry.fmt(casted_to_type),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: cast.expr.loc(),
+                }))
+            }
+        }
+
+        self.store_type(ctx, cast.id, casted_to_type)
+
+        return Ok()
+    }
+
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let is_ref_prev = ctx.is_expr_referenced
+        ctx.is_expr_referenced = false
+
+        let lhs_type_id = self.type_code_expr_and_load(ctx, field_access.lhs)?
+
+        ctx.is_expr_referenced = is_ref_prev
+
+        if match Type::Pointer(_) = self.get_type(lhs_type_id) {
+            if !ctx.is_expr_referenced {
+                self.process_memory_op(field_access.field_name.loc)
+            }
+        }
+
+        let field = Typer::get_struct_field_info(self.registry, self.get_type(lhs_type_id), field_access)?
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                self.registry.fmt(self.get_type(lhs_type_id)),
+                ".",
+                field_access.field_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(field.field_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: field_access.field_name.loc,
+                linked_loc: field.loc,
+            })
+        }
+
+        self.store_type(ctx, field_access.id, self.get_type(field.field_type_id))
+        return Ok()
+    }
+
+    if match CodeExpr::FnCall(call) = expr {
+        let symbol = self.get_symbol(ctx, call.fn_name.repr)
+        if symbol != null && symbol.kind == TySymbolKind::EnumConstructor {
+            let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+            let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+            let variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+            if self.reporter.in_inspection_mode {
+                let message = String::new_in(self.reporter.inspection_arena, 32)
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    " // ",
+                    enum_ctor.variant_index.to_tmp_str!(),
+                )
+
+                self.reporter.print_inspection(InspectInfo {
+                    message: message,
+                    loc: call.fn_name.loc,
+                    linked_loc: &enum_ctor.loc,
+                })
+            }
+
+            for arg in call.args.items.iter!() {
+                self.report_if_err!(self.type_code_expr(ctx, arg))
+            }
+
+            if call.args.items.len != 1 {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(
+                        self.registry.error_arena,
+                        "Non-void enum constructors require exactly one argument",
+                    ),
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            let expr_type_id_ptr = self.load_type(ctx, call.args.items.get!(0))
+            if expr_type_id_ptr != null \
+                && !self.is_type_compatible(self.get_type(variant.variant_type_id), self.get_type(*expr_type_id_ptr))
+            {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid enum payload: ")
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(*expr_type_id_ptr)),
+                    ", expected: ",
+                    self.registry.fmt(self.get_type(variant.variant_type_id)),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            self.store_expr_info(ctx, call.id, self.registry.call_info.len)
+            self.registry.call_info.push!(CallInfo {
+                value: CallInfoValue::EnumCtor(enum_ctor.variant_index),
+                return_type_id: self.intern_type(Type::Enum(heap::new!(EnumType {
+                    enum_index: enum_ctor.enum_index,
+                }))),
+            })
+
+            return Ok()
+        }
+
+        self.type_fn_call(
+            ctx,
+            call.fn_name.repr,
+            null,
+            call.args.items,
+            call.id,
+            call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::MethodCall(call) = expr {
+        let lhs_type_id = self.type_code_expr_and_load(ctx, call.lhs)?
+        let fn_name = self.get_fn_name_from_method(self.get_type(lhs_type_id), call.field_name.repr)
+
+        self.type_fn_call(
+            ctx,
+            fn_name,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::InlineFnCall(call) = expr {
+        self.type_inline_fn_call(
+            ctx,
+            call.fn_name.repr,
+            call.type_args,
+            null,
+            call.args.items,
+            call.id,
+            call.fn_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::InlineMethodCall(call) = expr {
+        let lhs_type = self.get_type(self.type_code_expr_and_load(ctx, call.lhs)?)
+        let inline_fn_name = self.get_fn_name_from_method(lhs_type, call.field_name.repr)
+
+        self.type_inline_fn_call(
+            ctx,
+            inline_fn_name,
+            call.type_args,
+            ref!(call.lhs),
+            call.args.items,
+            call.id,
+            call.field_name.loc,
+        )?
+        return Ok()
+    }
+
+    if match CodeExpr::IntrinsicCall(call) = expr {
+        if call.fn_name.repr.equals("unreachable") {
+            self.store_type(ctx, call.id, Type::Never)
+
+            if call.args.items.len != 0 || call.type_args.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): never`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("data_size") {
+            self.store_type(ctx, call.id, Type::U32)
+
+            if call.type_args.len != 0 || call.args.items.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): u32`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            if ctx.fn_index != null {
+                let message = String::from_str_in(self.registry.error_arena, "`@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): u32` can only be used in globals",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("memory_size") {
+            self.store_type(ctx, call.id, Type::I32)
+
+            if call.args.items.len != 0 || call.type_args.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): i32`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("memory_grow") {
+            self.store_type(ctx, call.id, Type::I32)
+
+            for arg in call.args.items.iter!() {
+                self.report_if_err!(self.type_code_expr(ctx, arg))
+            }
+
+            let bad_args = call.type_args.len != 0 || call.args.items.len != 1
+
+            if call.args.items.len > 0 {
+                let type_id = self.load_type(ctx, call.args.items.get!(0))
+                if type_id != null {
+                    if !self.get_type(*type_id).equals(Type::U32) {
+                        bad_args = true
+                    }
+                }
+            }
+
+            if bad_args {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(num_pages: u32): i32`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("memory_copy") {
+            self.store_type(ctx, call.id, Type::Void)
+
+            let bad_args = call.type_args.len != 0
+
+            let all_good = true
+            let arg_types = Vec::new!<Type>()
+            for arg in call.args.items.iter!() {
+                let arg_type_id_result = self.type_code_expr_and_load(ctx, arg)
+                if arg_type_id_result.err as u32 != 0 {
+                    self.report_error(arg_type_id_result.err)
+                    all_good = false
+                    continue
+                }
+
+                arg_types.push!(self.get_type(arg_type_id_result.ok))
+            }
+
+            if all_good {
+                if arg_types.len != 3 {
+                    bad_args = true
+                } else {
+                    for i in 0..3 {
+                        if !arg_types.get!(i).equals(Type::U32) {
+                            bad_args = true
+                        }
+                    }
+                }
+            }
+
+            if bad_args {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(dest: u32, source: u32: num_bytes: u32)`",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("embed_file") {
+            self.store_type(ctx, call.id, Type::Seg(heap::new!(SegType { item: self.intern_type(Type::U8) })))
+
+            if call.type_args.len != 0 || call.args.items.len != 1 {
+                return Err(bad_args(self.registry.error_arena, call))
+            }
+
+            match CodeExpr::StringLiteral(str_literal) = call.args.items.get!(0) else {
+                return Err(bad_args(self.registry.error_arena, call))
+            }
+
+            let absolute_path = self.registry.resolve_path(str_literal.value.as_str(), call.fn_name.loc)
+
+            let bytes = fs::read_file(absolute_path.as_str()) catch err {
+                let message = String::new_in(self.registry.error_arena, 64)
+                do message.push_str(it) with (
+                    "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
+                    err.to_tmp_str!(),
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.args.items.get!(0).loc(),
+                }))
+            }
+
+            let bytes_info = self.append_data(bytes.as_str().iter!())
+
+            self.store_expr_info(ctx, str_literal.id, self.registry.stored_bytes.len)
+            self.registry.stored_bytes.push!(StoredExprBytes {
+                info: bytes_info,
+                expr_type_id: *self.registry.str_literal_type_id,
+            })
+
+            return Ok()
+
+            fn bad_args(arena: &Arena, call: &InlineFnCallExpr): &Error {
+                let message = String::from_str_in(arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(relative_file_path: str): &*u8`",
+                )
+
+                return arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                })
+            }
+        }
+
+        if call.fn_name.repr.equals("inline_fn_call_loc") {
+            let inline_fn_call_loc = null as &?Loc
+
+            let current_ctx = ctx
+            loop {
+                if current_ctx.kind == ScopeKind::InlineFn {
+                    inline_fn_call_loc = current_ctx.inline_fn_call_loc
+                    break
+                }
+
+                if current_ctx.parent != null {
+                    current_ctx = current_ctx.parent
+                } else {
+                    break
+                }
+            }
+
+            if inline_fn_call_loc == null {
+                let message = String::from_str_in(self.registry.error_arena, "Forbidden use of `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "()` outside of inline fn",
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            if call.type_args.len != 0 || call.args.items.len != 0 {
+                let message = String::from_str_in(self.registry.error_arena, "Invalid arguments for `@")
+                do message.push_str(it) with (
+                    call.fn_name.repr,
+                    "(): &*u8`",
+                )
+
+                return Err(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: call.fn_name.loc,
+                }))
+            }
+
+            let bytes_info = self.process_const_string(
+                (*inline_fn_call_loc).to_string_in(Alloc::HEAP, self.registry).as_str(),
+            )
+
+            self.store_expr_info(ctx, call.extra_id, self.registry.stored_bytes.len)
+            self.registry.stored_bytes.push!(StoredExprBytes {
+                info: bytes_info,
+                expr_type_id: *self.registry.str_literal_type_id,
+            })
+
+            self.store_expr_info(ctx, call.id, *self.registry.str_literal_type_id)
+
+            return Ok()
+        }
+
+        if call.fn_name.repr.equals("seg") {
+            if call.args.items.len == 2 {
+                let ptr_type_id = self.type_code_expr_and_load(ctx, call.args.items.get!(0))?
+                let len_type_id = self.type_code_expr_and_load(ctx, call.args.items.get!(1))?
+
+                if match Type::Pointer(ptr) = self.get_type(ptr_type_id) {
+                    if ptr.is_sequence && !ptr.is_nullable {
+                        if match Type::U32(_) = self.get_type(len_type_id) {
+                            self.store_type(ctx, call.id, Type::Seg(heap::new!(SegType { item: ptr.pointee })))
+                            return Ok()
+                        }
+                    }
+                }
+            }
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid arguments for `@seg(ptr: &[]T, len: u32): seg(T)`",
+                ),
+                loc: call.fn_name.loc,
+            }))
+        }
+
+        let message = String::from_str_in(self.registry.error_arena, "Unknown intrinsic: ")
+        message.push_str(call.fn_name.repr)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: call.fn_name.loc,
+        }))
+    }
+
+    if match CodeExpr::Return(return_expr) = expr {
+        self.store_type(ctx, return_expr.id, Type::Never)
+
+        let return_type = Type::Void
+        if return_expr.expr != null {
+            let return_type_id = self.type_code_expr_and_load(ctx, *return_expr.expr)?
+            return_type = self.get_type(return_type_id)
+        }
+
+        if ctx.fn_index == null {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Cannot use `return` in const context",
+                ),
+                loc: return_expr.loc,
+            }))
+            return Ok()
+        }
+
+        let fn_return_type = self.get_type(self.registry.functions.at!(*ctx.fn_index).type_.output)
+        if !self.is_type_compatible(fn_return_type, return_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Invalid return type: ",
+            )
+            message.push_str(self.registry.fmt(return_type))
+            message.push_str(", expected: ")
+            message.push_str(self.registry.fmt(fn_return_type))
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: return_expr.loc,
+            }))
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::If(if_expr) = expr {
+        let then_ctx = self.child_ctx(ctx, ScopeKind::Block)
+
+        if match IfCond::Expr(cond_expr) = if_expr.cond {
+            let cond_result = self.type_code_expr_and_load(ctx, *cond_expr)
+            if cond_result.err as u32 != 0 {
+                self.report_error(cond_result.err)
+            } else {
+                if !self.get_type(cond_result.ok).equals(Type::Bool) {
+                    let message = String::from_str_in(self.registry.error_arena, "Invalid condition type: ")
+                    do message.push_str(it) with (
+                        self.registry.fmt(self.get_type(cond_result.ok)),
+                        ", expected: ",
+                        self.registry.fmt(Type::Bool),
+                    )
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: (*cond_expr).loc(),
+                    }))
+                }
+            }
+        }
+        if match IfCond::Match(match_header) = if_expr.cond {
+            self.report_if_err!(self.type_match_header(then_ctx, match_header))
+        }
+
+        let then_type = self.type_code_block(then_ctx, &if_expr.then_block, true)
+
+        let else_type = Type::Void
+        if match ElseBlock::Else(else_block) = if_expr.else_block {
+            let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
+            else_type = self.type_code_block(else_ctx, else_block, true)
+        }
+        if match ElseBlock::ElseIf(code_expr) = if_expr.else_block {
+            let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
+
+            self.report_if_err!(self.type_code_expr(else_ctx, *code_expr))
+            let type_id = self.load_type(else_ctx, *code_expr)
+            if type_id != null {
+                else_type = self.get_type(*type_id)
+            }
+        }
+
+        if then_type.equals(Type::Never) && else_type.equals(Type::Never) {
+            self.store_type(ctx, if_expr.id, Type::Never)
+        } else {
+            self.store_type(ctx, if_expr.id, Type::Void)
+        }
+        return Ok()
+    }
+
+    if match CodeExpr::While(while_expr) = expr {
+        let loop_ctx = self.child_ctx(ctx, ScopeKind::Loop)
+        let _ = self.type_code_block(loop_ctx, &while_expr.body, true)
+
+        if while_expr.cond != null {
+            let cond_type = self.type_code_expr_and_load(ctx, *while_expr.cond)?
+
+            if !self.get_type(cond_type).equals(Type::Bool) {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid condition type: ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(cond_type)))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(Type::Bool))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: (*while_expr.cond).loc(),
+                }))
+            }
+        }
+
+        self.store_type(ctx, while_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::For(for_expr) = expr {
+        let item_type_id = u32::MAX
+
+        if match ForExprIterator::Range(range) = for_expr.iterator {
+            let start_result = self.type_code_expr_and_load(ctx, range.start)
+            if start_result.err as u32 != 0 {
+                self.report_error(start_result.err)
+            } else {
+                item_type_id = start_result.ok
+            }
+
+            let range_end_type_id = u32::MAX
+            let end_result = self.type_code_expr_and_load(ctx, range.end)
+            if end_result.err as u32 != 0 {
+                self.report_error(end_result.err)
+            } else {
+                range_end_type_id = end_result.ok
+            }
+
+            if item_type_id != u32::MAX {
+                let is_wide_result = Typer::is_wide_int(self.get_type(item_type_id))
+                if is_wide_result.err as u32 != 0 {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Invalid counter. Type must be an integer, got ",
+                    )
+                    message.push_str(self.registry.fmt(self.get_type(item_type_id)))
+                    message.push_str(" instead")
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: range.start.loc(),
+                    }))
+                }
+            }
+
+            if item_type_id != u32::MAX && range_end_type_id != u32::MAX && item_type_id != range_end_type_id {
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "Invalid range end type: ",
+                )
+                message.push_str(self.registry.fmt(self.get_type(range_end_type_id)))
+                message.push_str(", expected: ")
+                message.push_str(self.registry.fmt(self.get_type(item_type_id)))
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: range.end.loc(),
+                }))
+            }
+        }
+
+        if match ForExprIterator::Segment(segment) = for_expr.iterator {
+            let seg_type_result = self.type_code_expr_and_load(ctx, segment.expr)
+            if seg_type_result.err as u32 != 0 {
+                self.report_error(seg_type_result.err)
+            } else {
+                let iter_type_id = seg_type_result.ok
+                let iter_type = self.get_type(iter_type_id)
+
+                if match Type::Seg(seg) = iter_type {
+                    if for_expr.ref_only {
+                        item_type_id = self.intern_type(Type::Pointer(heap::new!(PointerType {
+                            pointee: seg.item,
+                            is_sequence: false,
+                            is_nullable: false,
+                        })))
+                    } else {
+                        item_type_id = seg.item
+                    }
+                } else {
+                    let message = String::from_str_in(
+                        self.registry.error_arena,
+                        "Expected seg(T), found ",
+                    )
+                    message.push_str(self.registry.fmt(iter_type))
+
+                    self.report_error(self.registry.error_arena.new!(Error {
+                        message: message,
+                        loc: segment.expr.loc(),
+                    }))
+                }
+            }
+        }
+
+        let ctx = self.child_ctx(ctx, ScopeKind::ForLoop)
+
+        if item_type_id != u32::MAX {
+            let _ = self.define_local(
+                ctx,
+                &for_expr.item.repr,
+                item_type_id,
+                for_expr.item.loc,
+                for_expr.item.id,
+                true,
+            )
+        }
+
+        let _ = self.type_code_block(ctx, &for_expr.body, true)
+
+        self.store_type(ctx, for_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::Break(break_expr) = expr {
+        let label_index = 1 // 0 = loop, 1 = loop wrapper block
+
+        let current_ctx = ctx
+        loop {
+            if current_ctx.kind == ScopeKind::Loop {
+                break
+            }
+            if current_ctx.kind == ScopeKind::ForLoop {
+                label_index += 1
+                break
+            }
+            if current_ctx.kind == ScopeKind::Block {
+                label_index += 1
+            }
+            if current_ctx.kind == ScopeKind::Function || current_ctx.kind == ScopeKind::Global {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Cannot break outside of a loop"),
+                    loc: break_expr.loc,
+                }))
+            }
+
+            if current_ctx.parent == null {
+                break
+            }
+            current_ctx = current_ctx.parent
+        }
+
+        self.store_expr_info(ctx, break_expr.id, self.registry.breaks.len)
+        self.registry.breaks.push!(BreakInfo {
+            label_index: label_index,
+            expr_type_id: self.intern_type(Type::Never),
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::Continue(continue_expr) = expr {
+        let label_index = 0 // 0 = loop, 1 = loop wrapper block
+
+        let current_ctx = ctx
+        loop {
+            if current_ctx.kind == ScopeKind::Loop || current_ctx.kind == ScopeKind::ForLoop {
+                break
+            }
+            if current_ctx.kind == ScopeKind::Block {
+                label_index += 1
+            }
+            if current_ctx.kind == ScopeKind::Function || current_ctx.kind == ScopeKind::Global {
+                return Err(self.registry.error_arena.new!(Error {
+                    message: String::from_str_in(self.registry.error_arena, "Cannot continue outside of a loop"),
+                    loc: continue_expr.loc,
+                }))
+            }
+
+            if current_ctx.parent == null {
+                break
+            }
+            current_ctx = current_ctx.parent
+        }
+
+        self.store_expr_info(ctx, continue_expr.id, self.registry.breaks.len)
+        self.registry.breaks.push!(BreakInfo {
+            label_index: label_index,
+            expr_type_id: self.intern_type(Type::Never),
+        })
+
+        return Ok()
+    }
+
+    if match CodeExpr::Defer(defer_expr) = expr {
+        self.type_code_expr(ctx, defer_expr.expr)?
+        self.store_type(ctx, defer_expr.id, Type::Void)
+        return Ok()
+    }
+
+    if match CodeExpr::Catch(catch_expr) = expr {
+        let expr_type_id = self.type_code_expr_and_load(ctx, catch_expr.lhs)?
+        let result = self.assert_catchable_type(self.get_type(expr_type_id), catch_expr.catch_loc)?
+
+        let ctx = self.child_ctx(ctx, ScopeKind::Block)
+
+        self.define_local_no_symbol(ctx, null, result.ok, catch_expr.ok_bind_id)
+        let _ = self.define_local(
+            ctx,
+            &catch_expr.error_bind.repr,
+            result.err,
+            catch_expr.error_bind.loc,
+            catch_expr.error_bind.id,
+            true,
+        )
+
+        let catch_type = self.type_code_block(ctx, &catch_expr.catch_body, true)
+        if !catch_type.equals(Type::Never) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Catch expression must resolve to never, got other type",
+                ),
+                loc: catch_expr.catch_loc,
+            }))
+        }
+
+        self.store_expr_info(ctx, catch_expr.id, result.ok)
+        return Ok()
+    }
+
+    if match CodeExpr::PropagateError(prop_error) = expr {
+        let expr_type_id = self.type_code_expr_and_load(ctx, prop_error.expr)?
+        let result = self.assert_catchable_type(self.get_type(expr_type_id), prop_error.loc)?
+
+        self.define_local_no_symbol(ctx, null, result.ok, prop_error.ok_bind_id)
+        self.define_local_no_symbol(ctx, null, result.err, prop_error.err_bind_id)
+
+        self.store_expr_info(ctx, prop_error.id, result.ok)
+
+        return Ok()
+    }
+
+    if match CodeExpr::Match(match_expr) = expr {
+        let else_ctx = self.child_ctx(ctx, ScopeKind::Block)
+        let else_type = self.type_code_block(else_ctx, &match_expr.else_branch, true)
+        if !else_type.equals(Type::Never) {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "Match's else block must resolve to never, got other type",
+                ),
+                loc: match_expr.else_branch.loc,
+            }))
+        }
+
+        self.report_if_err!(self.type_match_header(ctx, &match_expr.header))
+
+        self.store_type(ctx, match_expr.id, Type::Void)
+
+        return Ok()
+    }
+
+    if match CodeExpr::Paren(paren) = expr {
+        self.type_code_expr(ctx, paren.expr)?
+
+        let expr_type_id = self.load_type(ctx, paren.expr)
+        if expr_type_id != null {
+            self.store_expr_info(ctx, paren.id, *expr_type_id)
+        }
+        return Ok()
+    }
+
+    if match CodeExpr::DoWith(do_with) = expr {
+        self.store_type(ctx, do_with.id, Type::Void)
+
+        if do_with.args.items.len == 0 {
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: String::from_str_in(
+                    self.registry.error_arena,
+                    "do-with expressions must have at least one argument",
+                ),
+                loc: do_with.with_loc,
+            }))
+            return Ok()
+        }
+
+        for arg in do_with.args.items.iter!() {
+            self.report_if_err!(self.type_code_expr(ctx, arg))
+        }
+
+        let it_type_id_ptr = self.load_type(ctx, do_with.args.items.get!(0))
+        if it_type_id_ptr == null {
+            return Ok()
+        }
+        let it_type_id = *it_type_id_ptr
+
+        let ctx = self.child_ctx(ctx, ScopeKind::InlineFn)
+        let _ = self.define_local(
+            ctx,
+            heap::new!("it"),
+            it_type_id,
+            do_with.with_loc,
+            do_with.bind_id,
+            true,
+        )
+
+        for arg in do_with.args.items.iter!().skip!(1) {
+            let arg_type_id_ptr = self.load_type(ctx, arg)
+            if arg_type_id_ptr != null && *arg_type_id_ptr != it_type_id {
+                let arg_type_id = *arg_type_id_ptr
+                let message = String::from_str_in(
+                    self.registry.error_arena,
+                    "do-with argument type mismatch. expected: ",
+                )
+                do message.push_str(it) with (
+                    self.registry.fmt(self.get_type(it_type_id)),
+                    ", got: ",
+                    self.registry.fmt(self.get_type(arg_type_id)),
+                )
+
+                self.report_error(self.registry.error_arena.new!(Error {
+                    message: message,
+                    loc: arg.loc(),
+                }))
+            }
+        }
+
+        self.report_if_err!(self.type_code_expr(ctx, do_with.body))
+
+        return Ok()
+    }
+
+    if match CodeExpr::Pipe(pipe) = expr {
+        self.report_if_err!(self.type_code_expr(ctx, pipe.lhs))
+
+        let ctx = self.child_ctx(ctx, ScopeKind::InlineFn)
+        let it_type_id = self.load_type(ctx, pipe.lhs)
+        if it_type_id != null {
+            let _ = self.define_local(ctx, heap::new!("it"), *it_type_id, pipe.op_loc, pipe.bind_id, true)
+        }
+
+        self.report_if_err!(self.type_code_expr(ctx, pipe.rhs))
+
+        let type_id = self.load_type(ctx, pipe.rhs)
+        if type_id != null {
+            self.store_expr_info(ctx, pipe.id, *type_id)
+        } else {
+            self.store_type(ctx, pipe.id, Type::Never)
+        }
+
+        return Ok()
+    }
+
+    if match CodeExpr::Sizeof(sizeof_expr) = expr {
+        self.report_if_err!(self.build_type(ctx, sizeof_expr.type_expr))
+        self.store_type(ctx, sizeof_expr.id, Type::U32)
+        return Ok()
+    }
+
+    @unreachable()
+}
+
+fn Typer::get_compound_assignment_base_op(&self, op_tag: InfixOpTag): Result(InfixOpTag, &VoidError) {
+    if op_tag == InfixOpTag::AddAssign {
+        return Ok(InfixOpTag::Add)
+    }
+    if op_tag == InfixOpTag::SubAssign {
+        return Ok(InfixOpTag::Sub)
+    }
+    if op_tag == InfixOpTag::MulAssign {
+        return Ok(InfixOpTag::Mul)
+    }
+    if op_tag == InfixOpTag::DivAssign {
+        return Ok(InfixOpTag::Div)
+    }
+    if op_tag == InfixOpTag::ModAssign {
+        return Ok(InfixOpTag::Mod)
+    }
+    if op_tag == InfixOpTag::BitAndAssign {
+        return Ok(InfixOpTag::BitAnd)
+    }
+    if op_tag == InfixOpTag::BitOrAssign {
+        return Ok(InfixOpTag::BitOr)
+    }
+    if op_tag == InfixOpTag::ShiftLeftAssign {
+        return Ok(InfixOpTag::ShiftLeft)
+    }
+    if op_tag == InfixOpTag::ShiftRightAssign {
+        return Ok(InfixOpTag::ShiftRight)
+    }
+
+    return Err(VoidError::VALUE)
+}
+
+fn Typer::get_binary_op_kind(
+    &self,
+    ctx: &TyContext,
+    op_tag: InfixOpTag,
+    operand_type: Type,
+    op_loc: Loc,
+): Result(WasmBinaryOpKind, &Error) {
+    let signed = false
+    let wasm_op_type = WasmType::I32
+
+    if match Type::Null(_) = operand_type {
+        // signed = false
+    } else if match Type::Bool(_) = operand_type {
+        // signed = false
+    } else if match Type::U8(_) = operand_type {
+        // signed = false
+    } else if match Type::U16(_) = operand_type {
+        // signed = false
+    } else if match Type::U32(_) = operand_type {
+        // signed = false
+    } else if match Type::Pointer(_) = operand_type {
+        // signed = false
+    } else if match Type::I8(_) = operand_type {
+        signed = true
+    } else if match Type::I16(_) = operand_type {
+        signed = true
+    } else if match Type::I32(_) = operand_type {
+        signed = true
+    } else if match Type::U64(_) = operand_type {
+        wasm_op_type = WasmType::I64
+    } else if match Type::I64(_) = operand_type {
+        wasm_op_type = WasmType::I64
+        signed = true
+    } else if match Type::Enum(enum_type) = operand_type {
+        if !self.get_type(self.registry.enums.at!(enum_type.enum_index).variant_type_id).equals(Type::Void) {
+            return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+        }
+        // signed = false
+    } else if match Type::Never(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Void(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Struct(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Result(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Seg(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else if match Type::Container(_) = operand_type {
+        return Err(incompatible_op_err(self, ctx, operand_type, op_loc))
+    } else {
+        todo!()
+    }
+
+    if wasm_op_type == WasmType::I32 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::I32_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::I32_NE)
+        }
+        if op_tag == InfixOpTag::Less {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_LT_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_LT_U)
+        }
+        if op_tag == InfixOpTag::Greater {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_GT_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_GT_U)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_LE_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_LE_U)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_GE_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_GE_U)
+        }
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::I32_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::I32_SUB)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::I32_MUL)
+        }
+        if op_tag == InfixOpTag::Div {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_DIV_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_DIV_U)
+        }
+        if op_tag == InfixOpTag::Mod {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_REM_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_REM_U)
+        }
+        if op_tag == InfixOpTag::And {
+            return Ok(WasmBinaryOpKind::I32_AND)
+        }
+        if op_tag == InfixOpTag::BitAnd {
+            return Ok(WasmBinaryOpKind::I32_AND)
+        }
+        if op_tag == InfixOpTag::Or {
+            return Ok(WasmBinaryOpKind::I32_OR)
+        }
+        if op_tag == InfixOpTag::BitOr {
+            return Ok(WasmBinaryOpKind::I32_OR)
+        }
+        if op_tag == InfixOpTag::ShiftLeft {
+            return Ok(WasmBinaryOpKind::I32_SHL)
+        }
+        if op_tag == InfixOpTag::ShiftRight {
+            if signed {
+                return Ok(WasmBinaryOpKind::I32_SHR_S)
+            }
+            return Ok(WasmBinaryOpKind::I32_SHR_U)
+        }
+    }
+
+    if wasm_op_type == WasmType::I64 {
+        if op_tag == InfixOpTag::Equal {
+            return Ok(WasmBinaryOpKind::I64_EQ)
+        }
+        if op_tag == InfixOpTag::NotEqual {
+            return Ok(WasmBinaryOpKind::I64_NE)
+        }
+        if op_tag == InfixOpTag::Less {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_LT_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_LT_U)
+        }
+        if op_tag == InfixOpTag::Greater {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_GT_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_GT_U)
+        }
+        if op_tag == InfixOpTag::LessEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_LE_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_LE_U)
+        }
+        if op_tag == InfixOpTag::GreaterEqual {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_GE_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_GE_U)
+        }
+        if op_tag == InfixOpTag::Add {
+            return Ok(WasmBinaryOpKind::I64_ADD)
+        }
+        if op_tag == InfixOpTag::Sub {
+            return Ok(WasmBinaryOpKind::I64_SUB)
+        }
+        if op_tag == InfixOpTag::Mul {
+            return Ok(WasmBinaryOpKind::I64_MUL)
+        }
+        if op_tag == InfixOpTag::Div {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_DIV_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_DIV_U)
+        }
+        if op_tag == InfixOpTag::Mod {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_REM_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_REM_U)
+        }
+        if op_tag == InfixOpTag::And {
+            return Ok(WasmBinaryOpKind::I64_AND)
+        }
+        if op_tag == InfixOpTag::BitAnd {
+            return Ok(WasmBinaryOpKind::I64_AND)
+        }
+        if op_tag == InfixOpTag::Or {
+            return Ok(WasmBinaryOpKind::I64_OR)
+        }
+        if op_tag == InfixOpTag::BitOr {
+            return Ok(WasmBinaryOpKind::I64_OR)
+        }
+        if op_tag == InfixOpTag::ShiftLeft {
+            return Ok(WasmBinaryOpKind::I64_SHL)
+        }
+        if op_tag == InfixOpTag::ShiftRight {
+            if signed {
+                return Ok(WasmBinaryOpKind::I64_SHR_S)
+            }
+            return Ok(WasmBinaryOpKind::I64_SHR_U)
+        }
+    }
+
+    todo!()
+
+    fn incompatible_op_err(typer: &Typer, ctx: &TyContext, op_type: Type, op_loc: Loc): &Error {
+        let message = String::new_in(typer.registry.error_arena, 32)
+        do message.push_str(it) with (
+            "Operator `",
+            op_loc.read_span(typer.registry.modules.get!(ctx.module_id).source),
+            "` is incompatible with operands of type ",
+            typer.registry.fmt(op_type),
+        )
+
+        return typer.registry.error_arena.new!(Error {
+            message: message,
+            loc: op_loc,
+        })
+    }
+}
+
+fn Typer::type_fn_call(
+    &self,
+    ctx: &TyContext,
+    fn_name: str,
+    receiver_arg: &?CodeExpr,
+    args: &Vec(CodeExpr),
+    call_expr_id: ExprId,
+    loc: Loc,
+): Result(void, &Error) {
+    let all_good = true
+    let arg_types = Vec::new!<TypeId>()
+
+    if receiver_arg != null {
+        let receiver_result = self.type_code_expr_and_load(ctx, *receiver_arg)
+        if receiver_result.err as u32 != 0 {
+            self.report_error(receiver_result.err)
+            all_good = false
+        } else {
+            arg_types.push!(receiver_result.ok)
+        }
+    }
+
+    for arg in args.iter!() {
+        let type_id = self.type_code_expr_and_load(ctx, arg) catch err {
+            self.report_error(err)
+            all_good = false
+            continue
+        }
+        arg_types.push!(type_id)
+    }
+
+    let fn_index = self.get_fn_index_for_call(ctx, fn_name, loc)?
+    let fn_info = self.registry.functions.at!(fn_index)
+
+    self.store_expr_info(ctx, call_expr_id, self.registry.call_info.len)
+    self.registry.call_info.push!(CallInfo {
+        value: CallInfoValue::FnCall(fn_index),
+        return_type_id: fn_info.type_.output,
+    })
+
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 64)
+
+        message.push_str("fn ")
+        message.push_str(fn_name)
+        message.push_str("(")
+
+        for i in 0..fn_info.params.len {
+            let param = fn_info.params.at!(i)
+            if i != 0 {
+                message.push_str(", ")
+            }
+
+            message.push_str(param.param_name.repr)
+            message.push_str(": ")
+            message.push_str(self.registry.fmt(self.get_type(param.param_type_id)))
+        }
+
+        let return_type = self.registry.fmt(self.get_type(fn_info.type_.output))
+        message.push_str("): ")
+        message.push_str(return_type)
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: &fn_info.definition_loc,
+        })
+    }
+
+    if all_good && !self.is_types_compatible(fn_info.type_.inputs, arg_types) {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid function arguments for function ")
+        do message.push_str(it) with (
+            fn_info.name,
+            ": [",
+            self.registry.fmt_many(arg_types),
+            "], expected [",
+            self.registry.fmt_many(fn_info.type_.inputs),
+            "]",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok()
+}
+
+fn Typer::get_fn_index_for_call(
+    &self,
+    ctx: &TyContext,
+    fn_name: str,
+    loc: Loc,
+): Result(u32, &Error) {
+    let symbol = self.get_symbol(ctx, fn_name)
+    if symbol == null {
+        let message = String::from_str_in(self.registry.error_arena, "Unknown function: ")
+        message.push_str(fn_name)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    if symbol.kind != TySymbolKind::Function {
+        let message = String::from_str_in(self.registry.error_arena, "Trying to call ")
+        do message.push_str(it) with (
+            fn_name,
+            " which is not a function, defined at: ",
+            symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(symbol.col_index)
+}
+
+fn Typer::type_inline_fn_call(
+    &self,
+    ctx: &TyContext,
+    inline_fn_name: str,
+    type_arg_exprs: &Vec(TypeExpr),
+    receiver_arg: &?CodeExpr,
+    arg_exprs: &Vec(CodeExpr),
+    call_expr_id: ExprId,
+    loc: Loc,
+): Result(void, &Error) {
+    let symbol = self.get_symbol(ctx, inline_fn_name)
+    if symbol == null {
+        let message = String::from_str_in(self.registry.error_arena, "Unknown inline fn: ")
+        message.push_str(inline_fn_name)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    let inline_fn_def = self.registry.inline_fns.get!(symbol.col_index)
+    match FnExprValue::Body(body) = inline_fn_def.value else {
+        @unreachable()
+    }
+
+    let parent_ctx = ctx
+    let inline_ctx = self.child_ctx(ctx, ScopeKind::InlineFn)
+    inline_ctx.inline_fn_call_loc = ref!(loc)
+
+    let type_args = Vec::new!<TypeId>()
+    for type_arg in type_arg_exprs.iter!() {
+        type_args.push!(self.build_type(parent_ctx, type_arg)?)
+    }
+    if type_args.len != inline_fn_def.decl.type_params.len {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid number of type args, expected ")
+        do message.push_str(it) with (
+            inline_fn_def.decl.type_params.len.to_tmp_str!(),
+            ", got ",
+            type_arg_exprs.len.to_tmp_str!(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+    for i in 0..inline_fn_def.decl.type_params.len {
+        self.define_type(
+            inline_ctx,
+            inline_fn_def.decl.type_params.get!(i),
+            self.get_type(type_args.get!(i)),
+            type_arg_exprs.get!(i).loc(),
+        )
+    }
+
+    let has_receiver = false
+    let arg_type_ids = Vec::new!<TypeId>()
+    if receiver_arg != null {
+        has_receiver = true
+        arg_type_ids.push!(self.type_code_expr_and_load(parent_ctx, *receiver_arg)?)
+    }
+    for arg in arg_exprs.iter!() {
+        arg_type_ids.push!(self.type_code_expr_and_load(parent_ctx, arg)?)
+    }
+    if arg_type_ids.len != inline_fn_def.decl.params.len {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid number of inline fn args, expected ")
+        do message.push_str(it) with (
+            inline_fn_def.decl.params.len.to_tmp_str!(),
+            ", got ",
+            arg_type_ids.len.to_tmp_str!(),
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    for i in 0..arg_type_ids.len {
+        let inline_fn_param = inline_fn_def.decl.params.get!(i)
+        let type_id = arg_type_ids.get!(i)
+
+        let infer_type_name = Typer::get_infer_type_name(self.registry, ref!(inline_fn_param))?
+        if infer_type_name != null {
+            self.define_type(inline_ctx, *infer_type_name, self.get_type(type_id), inline_fn_param.loc)
+        }
+
+        let param_name = inline_fn_param.param_name.repr
+        let param_loc = inline_fn_param.param_name.loc
+        let _ = self.define_symbol(inline_ctx, param_name, TySymbolKind::Const, param_loc)
+
+        if has_receiver && i == 0 {
+            self.registry.constants.push!(ConstDef {
+                type_id: type_id,
+                expr: *receiver_arg,
+                inner_expr_id_offset: parent_ctx.expr_id_offset,
+            })
+        } else {
+            let arg_index = i
+            if has_receiver {
+                arg_index = i - 1
+            }
+
+            self.registry.constants.push!(ConstDef {
+                type_id: type_id,
+                expr: arg_exprs.get!(arg_index),
+                inner_expr_id_offset: parent_ctx.expr_id_offset,
+            })
+        }
+    }
+
+    let self_type = self.get_fn_self_type(parent_ctx, inline_fn_def.decl.fn_name, inline_fn_def.decl.params)?
+
+    // TODO(logic)!: figure out why this is needed
+    inline_ctx.expr_id_offset = 0
+
+    let inline_fn_param_types = Vec::new!<TypeId>()
+    for &inline_fn_param in inline_fn_def.decl.params.iter!() {
+        let inline_fn_type = self.get_fn_param_type(inline_ctx, inline_fn_param, self_type, true)?
+        inline_fn_param_types.push!(inline_fn_type)
+    }
+
+    if !self.is_types_compatible(inline_fn_param_types, arg_type_ids) {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid inline fn args, expected [")
+        do message.push_str(it) with (
+            self.registry.fmt_many(inline_fn_param_types),
+            "], got [",
+            self.registry.fmt_many(arg_type_ids),
+            "]",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    let return_type_id = self.intern_type(Type::Void)
+    if inline_fn_def.decl.return_type != null {
+        return_type_id = self.build_type(inline_ctx, *inline_fn_def.decl.return_type)?
+    }
+
+    inline_ctx.expr_id_offset = self.registry.expr_info.len - body.block_expr_id
+    self.extend_expr_info_storage(body.expr_id_count)
+
+    let _ = self.type_code_block(inline_ctx, body, false)
+
+    self.store_expr_info(parent_ctx, call_expr_id, self.registry.inline_call_info.len)
+    self.registry.inline_call_info.push!(InlineCallInfo {
+        inline_fn_index: symbol.col_index,
+        inner_expr_id_offset: inline_ctx.expr_id_offset,
+        return_type_id: return_type_id,
+    })
+
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 64)
+
+        message.push_str("inline fn ")
+        message.push_str(inline_fn_name)
+        if type_args.len > 0 {
+            do message.push_str(it) with ("<", self.registry.fmt_many(type_args), ">")
+        }
+        message.push_str("(")
+
+        for i in 0..inline_fn_param_types.len {
+            if i != 0 {
+                message.push_str(", ")
+            }
+
+            let param = inline_fn_def.decl.params.at!(i)
+            message.push_str(param.param_name.repr)
+
+            let is_self_param = false
+            if match FnParamType::Self(_) = param.param_type {
+                is_self_param = true
+            }
+            if match FnParamType::SelfRef(_) = param.param_type {
+                is_self_param = true
+            }
+            if !is_self_param {
+                message.push_str(": ")
+                message.push_str(self.registry.fmt(self.get_type(inline_fn_param_types.get!(i))))
+            }
+        }
+
+        do message.push_str(it) with (
+            "): ",
+            self.registry.fmt(self.get_type(return_type_id)),
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: &inline_fn_def.decl.fn_name.loc,
+        })
+    }
+
+    return Ok()
+}
+
+fn Typer::get_infer_type_name(registry: &Registry, fn_param: &FnParam): Result(&?str, &Error) {
+    match FnParamType::Type(param_type) = fn_param.param_type else {
+        return Ok(null)
+    }
+
+    match TypeExpr::Container(ctr) = param_type.expr else {
+        return Ok(null)
+    }
+
+    match TypeExpr::Named(ident) = ctr.container else {
+        return Ok(null)
+    }
+
+    if !ident.repr.equals("infer") {
+        return Ok(null)
+    }
+
+    if ctr.items.len != 1 {
+        return Err(registry.error_arena.new!(Error {
+            message: String::from_str_in(registry.error_arena, "Invalid `infer` call, expected 1 named type argument"),
+            loc: ctr.loc,
+        }))
+    }
+
+    match TypeExpr::Named(item_ident) = ctr.items.get!(0) else {
+        return Err(registry.error_arena.new!(Error {
+            message: String::from_str_in(registry.error_arena, "Invalid `infer` call, expected 1 named type argument"),
+            loc: ctr.loc,
+        }))
+    }
+
+    return Ok(ref!(item_ident.repr))
+}
+
+fn Typer::get_fn_name_from_method(&self, receiver_type: Type, method_name: str): str {
+    let deref_receiver_type = self.deref_rec(receiver_type)
+
+    let name = String::new_in(self.registry.error_arena, 16)
+
+    if match Type::Seg(_) = deref_receiver_type {
+        name.push_str("seg")
+    } else if match Type::Result(_) = deref_receiver_type {
+        name.push_str("Result")
+    } else if match Type::Container(ctr) = deref_receiver_type {
+        name.push_str(self.registry.fmt(self.get_type(ctr.container)))
+    } else {
+        name.push_str(self.registry.fmt(deref_receiver_type))
+    }
+
+    name.push_str("::")
+    name.push_str(method_name)
+
+    return name.as_str()
+}
+
+fn Typer::deref_rec(&self, type_: Type): Type {
+    if match Type::Pointer(ptr) = type_ {
+        return self.deref_rec(self.get_type(ptr.pointee))
+    }
+
+    return type_
+}
+
+fn Typer::get_result_literal_type(
+    &self,
+    ctx: &TyContext,
+    explicit_type: &?ResultTypeExpr,
+    loc: Loc,
+): Result(ResultType, &Error) {
+    if explicit_type != null {
+        let ok = self.build_type(ctx, explicit_type.ok)?
+        let err = self.build_type(ctx, explicit_type.err)?
+        return Ok(ResultType { ok: ok, err: err })
+    }
+
+    if ctx.fn_index == null {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create implicitly typed result in const context",
+            ),
+            loc: loc,
+        }))
+    }
+
+    let fn_info = self.registry.functions.at!(*ctx.fn_index)
+    match Type::Result(result) = self.get_type(fn_info.type_.output) else {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(
+                self.registry.error_arena,
+                "Cannot create implicitly typed result: function does not return result",
+            ),
+            loc: loc,
+        }))
+    }
+
+    return Ok(ResultType { ok: result.ok, err: result.err })
+}
+
+fn Typer::get_value_info(
+    &self,
+    ctx: &TyContext,
+    var_name: IdentExpr,
+): Result(ValueInfo, &Error) {
+    let symbol = self.get_symbol(ctx, var_name.repr)
+    if symbol == null {
+        let message = String::from_str_in(self.registry.error_arena, "Unknown variable: ")
+        message.push_str(var_name.repr)
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: var_name.loc,
+        }))
+    }
+
+    if symbol.kind == TySymbolKind::Local {
+        if symbol.defining_fn_index != ctx.fn_index {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Forbidden access of a parent function's local `",
+            )
+            message.push_str(var_name.repr)
+            message.push_str("`")
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: var_name.loc,
+            }))
+        }
+
+        let local_def = self.registry.locals.at!(symbol.col_index)
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.registry.get_type(local_def.local_type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Local,
+            col_index: symbol.col_index,
+            type_id: local_def.local_type_id,
+        })
+    }
+
+    if symbol.kind == TySymbolKind::Global {
+        let global = self.registry.globals.at!(symbol.col_index)
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(global.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Global,
+            col_index: symbol.col_index,
+            type_id: global.type_id,
+        })
+    }
+
+    if symbol.kind == TySymbolKind::Const {
+        let const_def = self.registry.constants.at!(symbol.col_index)
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "inline let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(self.get_type(const_def.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(ValueInfo {
+            kind: ValueKind::Const,
+            col_index: symbol.col_index,
+            type_id: const_def.type_id,
+        })
+    }
+
+    if symbol.kind == TySymbolKind::EnumConstructor {
+        let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+        let enum_def = self.registry.enums.at!(enum_ctor.enum_index)
+        let enum_variant = enum_def.variants.at!(enum_ctor.variant_index)
+
+        if enum_variant.has_payload {
+            let message = String::from_str_in(self.registry.error_arena, "Cannot construct ")
+            do message.push_str(it) with (
+                var_name.repr,
+                ", expected payload of type ",
+                self.registry.fmt(self.get_type(enum_variant.variant_type_id)),
+            )
+
+            return Err(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: var_name.loc,
+            }))
+        }
+
+        let var_type = Type::Enum(heap::new!(EnumType {
+            enum_index: enum_ctor.enum_index,
+        }))
+
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "inline let ",
+                var_name.repr,
+                ": ",
+                self.registry.fmt(var_type),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: var_name.loc,
+                linked_loc: &enum_ctor.loc,
+            })
+        }
+
+        return Ok(ValueInfo {
+            kind: ValueKind::EnumConstructor,
+            col_index: symbol.col_index,
+            type_id: self.intern_type(var_type),
+        })
+    }
+
+    let message = String::from_str_in(self.registry.error_arena, "Expected variable, found ")
+    message.push_str(var_name.repr)
+
+    return Err(self.registry.error_arena.new!(Error {
+        message: message,
+        loc: var_name.loc,
+    }))
+}
+
+fn Typer::process_var_write(&self, ctx: &TyContext, lhs: CodeExpr): Result(void, &Error) {
+    let var = self.get_variable_kind(ctx, lhs) catch _ {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Invalid lhs"),
+            loc: lhs.loc(),
+        }))
+    }
+
+    if var == VariableKind::ReadWriteStored {
+        self.process_memory_op(lhs.loc())
+    }
+
+    if var == VariableKind::Readonly {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Cannot mutate a constant"),
+            loc: lhs.loc(),
+        }))
+    }
+
+    return Ok()
+}
+
+fn Typer::get_variable_kind(&self, ctx: &TyContext, expr: CodeExpr): Result(VariableKind, &VoidError) {
+    if match CodeExpr::Ident(var_name) = expr {
+        let expr_info = self.registry.get_expr_info(ctx.expr_id_offset, var_name.id)
+        let value_info = self.registry.value_info.at!(*expr_info)
+
+        if value_info.kind == ValueKind::Global || value_info.kind == ValueKind::Local {
+            return Ok(VariableKind::ReadWrite)
+        }
+
+        return Ok(VariableKind::Readonly)
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Dereference {
+            return Ok(VariableKind::ReadWriteStored)
+        }
+    }
+
+    if match CodeExpr::FieldAccess(field_access) = expr {
+        let lhs_type_id = self.load_type(ctx, field_access.lhs)
+        let lhs_type = self.get_type(*lhs_type_id)
+
+        if match Type::Pointer(ptr) = lhs_type {
+            if !ptr.is_sequence {
+                return Ok(VariableKind::ReadWriteStored)
+            }
+        }
+
+        let var_result = self.get_variable_kind(ctx, field_access.lhs)
+        if var_result.err as u32 == 0 {
+            return Ok(var_result.ok)
+        }
+        return Ok(VariableKind::Readonly)
+    }
+
+    return Err(VoidError::VALUE)
+}
+
+fn Typer::process_memory_op(&self, loc: Loc) {
+    if self.registry.memory_info != null {
+        return
+    }
+
+    if self.forbid_memory_loc != null {
+        let message = String::from_str_in(
+            self.registry.error_arena,
+            "Memory operations forbidden, see ",
+        )
+        message.push_str(
+            (*self.forbid_memory_loc).to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        self.report_error(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+        return
+    }
+
+    self.autodefine_memory = true
+}
+
+fn Typer::define_local(
+    &self,
+    ctx: &TyContext,
+    name: &str,
+    type_id: TypeId,
+    loc: Loc,
+    bind_id: ExprId,
+    always_define: bool,
+): bool {
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 32)
+        do message.push_str(it) with (
+            "let ",
+            *name,
+            ": ",
+            self.registry.fmt(self.get_type(type_id)),
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: loc,
+            linked_loc: null,
+        })
+    }
+
+    let defined = !(*name).equals("_") && self.define_symbol(ctx, *name, TySymbolKind::Local, loc)
+    if defined || always_define {
+        self.define_local_no_symbol(ctx, name, type_id, bind_id)
+    }
+
+    return defined
+}
+
+fn Typer::define_local_no_symbol(
+    &self,
+    ctx: &TyContext,
+    local_name: &?str,
+    type_id: TypeId,
+    bind_id: ExprId,
+) {
+    let _ = self.registry.add_local(*ctx.fn_index, local_name, type_id)
+
+    self.store_expr_info(ctx, bind_id, self.registry.value_info.len)
+    self.registry.value_info.push!(ValueInfo {
+        kind: ValueKind::Local,
+        col_index: self.registry.locals.len - 1,
+        type_id: type_id,
+    })
+}
+
+fn Typer::build_type(&self, ctx: &TyContext, expr: TypeExpr): Result(TypeId, &Error) {
+    self.type_type_expr(ctx, expr)?
+
+    let expr_info = self.registry.get_expr_info(ctx.expr_id_offset, expr.id())
+    if expr_info == null {
+        self.reporter.abort_due_to_compiler_bug(
+            "Type expression should only return ok if it stored a type",
+            expr.loc(),
+        )
+    }
+
+    return Ok(*expr_info)
+}
+
+fn Typer::type_type_expr(&self, ctx: &TyContext, expr: TypeExpr): Result(void, &Error) {
+    if match TypeExpr::Named(ident) = expr {
+        let type_id = self.get_type_id_or_err(ctx, ident.repr, ident.loc)?
+        self.store_expr_info(ctx, ident.id, type_id)
+        return Ok()
+    }
+
+    if match TypeExpr::Pointer(ptr) = expr {
+        let pointee = self.build_type(ctx, ptr.pointee)?
+
+        self.store_type(ctx, ptr.id, Type::Pointer(heap::new!(PointerType {
+            pointee: pointee,
+            is_sequence: ptr.is_sequence,
+            is_nullable: ptr.is_nullable,
+        })))
+        return Ok()
+    }
+
+    if match TypeExpr::Container(ctr) = expr {
+        if match TypeExpr::Named(ident) = ctr.container {
+            if ident.repr.equals("Result") {
+                if ctr.items.len != 2 {
+                    todo!()
+                }
+
+                let ok = self.build_type(ctx, ctr.items.get!(0))?
+                let err = self.build_type(ctx, ctr.items.get!(1))?
+
+                self.store_type(ctx, ctr.id, Type::Result(heap::new!(ResultType { ok: ok, err: err })))
+                return Ok()
+            }
+
+            if ident.repr.equals("seg") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                let item = self.build_type(ctx, ctr.items.get!(0))?
+
+                self.store_type(ctx, ctr.id, Type::Seg(heap::new!(SegType { item: item })))
+                return Ok()
+            }
+
+            if ident.repr.equals("typeof") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                match TypeExpr::Named(item_ident) = ctr.items.get!(0) else {
+                    todo!()
+                }
+
+                let value_info = self.get_value_info(ctx, *item_ident)?
+                self.store_expr_info(ctx, ctr.id, value_info.type_id)
+                return Ok()
+            }
+
+            if ident.repr.equals("itemof") {
+                if ctr.items.len != 1 {
+                    todo!()
+                }
+
+                let container = self.build_type(ctx, ctr.items.get!(0))?
+                let container_type = self.deref_rec(self.get_type(container))
+
+                if match Type::Seg(seg) = container_type {
+                    self.store_expr_info(ctx, ctr.id, seg.item)
+                    return Ok()
+                }
+
+                if match Type::Result(res) = container_type {
+                    self.store_expr_info(ctx, ctr.id, res.ok)
+                    return Ok()
+                }
+
+                match Type::Container(ctr_type) = container_type else {
+                    todo!()
+                }
+
+                self.store_expr_info(ctx, ctr.id, ctr_type.items.get!(0))
+                return Ok()
+            }
+        }
+
+        let container = self.build_type(ctx, ctr.container)?
+
+        let items = Vec::new!<TypeId>()
+        for item in ctr.items.iter!() {
+            items.push!(self.build_type(ctx, item)?)
+        }
+
+        self.store_type(ctx, ctr.id, Type::Container(heap::new!(ContainerType {
+            container: container,
+            items: items,
+        })))
+        return Ok()
+    }
+
+    @unreachable()
+}
+
+fn Typer::get_type_id_or_err(
+    &self,
+    ctx: &TyContext,
+    type_name: str,
+    loc: Loc,
+): Result(TypeId, &Error) {
+    let symbol = self.get_symbol(ctx, type_name)
+    if symbol == null {
+        let alloc = self.registry.error_arena
+
+        let full_message = String::from_str_in(alloc, "Unknown type: ")
+        full_message.push_str(type_name)
+
+        return Err(alloc.new!(Error { message: full_message, loc: loc }))
+    }
+
+    if symbol.kind == TySymbolKind::Struct {
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with ("struct ", type_name, " { ... }")
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(self.intern_type(Type::Struct(heap::new!(StructType {
+            struct_index: symbol.col_index,
+        }))))
+    }
+
+    if symbol.kind == TySymbolKind::Enum {
+        if self.reporter.in_inspection_mode {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with ("enum ", type_name, " { ... }")
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(self.intern_type(Type::Enum(heap::new!(EnumType {
+            enum_index: symbol.col_index,
+        }))))
+    }
+
+    if symbol.kind == TySymbolKind::TypeAlias {
+        let type_alias = self.type_aliases.at!(symbol.col_index)
+        self.resolve_type_alias(type_alias)
+
+        // don't print inspection for built-ins
+        if self.reporter.in_inspection_mode && symbol.loc.module_id != 0 {
+            let message = String::new_in(self.reporter.inspection_arena, 32)
+            do message.push_str(it) with (
+                "type ",
+                type_name,
+                " = ",
+                self.registry.fmt(self.get_type(type_alias.type_id)),
+            )
+
+            self.reporter.print_inspection(InspectInfo {
+                message: message,
+                loc: loc,
+                linked_loc: &symbol.loc,
+            })
+        }
+
+        return Ok(type_alias.type_id)
+    }
+
+    todo!()
+}
+
+fn Typer::add_builtin_type(&self, ctx: &TyContext, type_: Type) {
+    self.define_type(
+        ctx,
+        type_.to_str().ok, // safe "unwrap"
+        type_,
+        Loc::internal(),
+    )
+}
+
+fn Typer::define_type(&self, ctx: &TyContext, name: str, type_: Type, loc: Loc) {
+    let _ = self.define_symbol(ctx, name, TySymbolKind::TypeAlias, loc)
+
+    let type_id = self.intern_type(type_)
+    self.type_aliases.push!(TyTypeAlias {
+        ctx: ctx,
+        type_id: type_id,
+        expr: null as &TypeExpr, // shouldn't be accessed since alias is already resolved
+        resolution: TypeResolution::Resolved,
+    })
+}
+
+fn Typer::is_types_compatible(&self, slots: &Vec(TypeId), values: &Vec(TypeId)): bool {
+    if slots.len != values.len {
+        return false
+    }
+
+    for i in 0..slots.len {
+        if !self.is_type_compatible(self.get_type(slots.get!(i)), self.get_type(values.get!(i))) {
+            return false
+        }
+    }
+
+    return true
+}
+
+fn Typer::is_type_compatible(&self, slot: Type, value: Type): bool {
+    if match Type::Pointer(slot_ptr) = slot {
+        if !slot_ptr.is_sequence {
+            if match Type::Null(_) = value {
+                if slot_ptr.is_nullable {
+                    return true
+                }
+            }
+
+            if match Type::Void(_) = self.get_type(slot_ptr.pointee) {
+                if match Type::Pointer(value_ptr) = value {
+                    return slot_ptr.is_nullable || !value_ptr.is_nullable
+                }
+            }
+
+            if match Type::Pointer(value_ptr) = value {
+                return self.is_type_compatible(self.get_type(slot_ptr.pointee), self.get_type(value_ptr.pointee))
+            }
+        }
+    }
+
+    if match Type::Container(ctr) = value {
+        if match Type::Container(slot_ctr) = slot {
+            return self.is_type_compatible(self.get_type(slot_ctr.container), self.get_type(ctr.container)) \
+                && self.is_types_compatible(slot_ctr.items, ctr.items)
+        }
+
+        // TODO: allow this for self arguments only
+        return self.is_type_compatible(slot, self.get_type(ctr.container))
+    }
+
+    if match Type::Never(_) = value {
+        return true
+    }
+
+    return slot.equals(value)
+}
+
+fn Typer::extend_expr_info_storage(&self, expr_count: u32) {
+    self.registry.expr_info.resize!(
+        self.registry.expr_info.len + expr_count,
+        EXPR_INFO_INVALID,
+    )
+}
+
+fn Typer::define_symbol(
+    &self,
+    ctx: &TyContext,
+    symbol_name: str,
+    symbol_kind: TySymbolKind,
+    symbol_loc: Loc,
+): bool {
+    let symbol_col_index = 0
+    if TySymbolKind::Local == symbol_kind {
+        symbol_col_index = self.registry.locals.len
+    } else if TySymbolKind::Global == symbol_kind {
+        symbol_col_index = self.registry.globals.len
+    } else if TySymbolKind::Const == symbol_kind {
+        symbol_col_index = self.registry.constants.len
+    } else if TySymbolKind::InlineFn == symbol_kind {
+        symbol_col_index = self.registry.inline_fns.len
+    } else if TySymbolKind::Function == symbol_kind {
+        symbol_col_index = self.registry.functions.len
+    } else if TySymbolKind::TypeAlias == symbol_kind {
+        symbol_col_index = self.type_aliases.len
+    } else if TySymbolKind::Struct == symbol_kind {
+        symbol_col_index = self.registry.structs.len
+    } else if TySymbolKind::Enum == symbol_kind {
+        symbol_col_index = self.registry.enums.len
+    } else if TySymbolKind::EnumConstructor == symbol_kind {
+        symbol_col_index = self.registry.enum_ctors.len
+    } else {
+        @unreachable()
+    }
+
+    let existing_symbol = self.get_symbol(ctx, symbol_name)
+    if existing_symbol != null && existing_symbol.ctx_id == ctx.id {
+        let message = String::from_str_in(self.registry.error_arena, "Cannot redefine ")
+        do message.push_str(it) with (
+            symbol_name,
+            ", previously defined at ",
+            existing_symbol.loc.to_string_in(self.registry.error_arena, self.registry).as_str(),
+        )
+
+        self.report_error(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: symbol_loc,
+        }))
+        return false
+    }
+
+    ctx.add_symbol(TySymbol {
+        ctx_id: ctx.id,
+        name: symbol_name,
+        kind: symbol_kind,
+        col_index: symbol_col_index,
+        loc: symbol_loc,
+        defining_fn_index: ctx.fn_index,
+    })
+
+    return true
+}
+
+// TODO(perf)?: use a map for symbol_table
+fn Typer::get_symbol(&self, ctx: &TyContext, symbol_name: str): &?TySymbol {
+    for &symbol in ctx.symbols.iter!() {
+        if symbol.name.equals(symbol_name) {
+            return symbol
+        }
+    }
+
+    if ctx.parent != null {
+        return self.get_symbol(ctx.parent, symbol_name)
+    }
+
+    return null
+}
+
+fn Typer::child_ctx(
+    &self,
+    parent: &TyContext,
+    scope_kind: ScopeKind,
+): &TyContext {
+    return self.contexts.push!(TyContext {
+        module_id: parent.module_id,
+        id: self.contexts.len(),
+        parent: parent,
+        kind: scope_kind,
+        fn_index: parent.fn_index,
+        expr_id_offset: parent.expr_id_offset,
+        symbols: Vec::new!<TySymbol>(),
+
+        inline_fn_call_loc: parent.inline_fn_call_loc,
+        is_expr_referenced: parent.is_expr_referenced,
+    })
+}
+
+fn Typer::load_type(&self, ctx: &TyContext, expr: CodeExpr): &?TypeId {
+    return self.registry.get_expr_type(ctx.expr_id_offset, expr)
+}
+
+fn Typer::get_const_value_or_err(&self, ctx: &TyContext, expr: CodeExpr): Result(CodeExpr, &VoidError) {
+    if match CodeExpr::BoolLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::CharLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::NullLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::IntLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::StringLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::StructLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        return Ok(expr)
+    }
+    if match CodeExpr::ResultLiteral(_) = expr {
+        return Ok(expr)
+    }
+
+    if match CodeExpr::IntrinsicCall(call) = expr {
+        if call.fn_name.repr.equals("data_size") {
+            return Ok(expr)
+        }
+    }
+
+    if match CodeExpr::Ident(ident_expr) = expr {
+        let symbol = self.get_symbol(ctx, ident_expr.repr)
+        if symbol == null {
+            return none_and_report(self, expr)
+        }
+
+        if symbol.kind == TySymbolKind::Const {
+            return Ok(self.registry.constants.get!(symbol.col_index).expr)
+        }
+        if symbol.kind == TySymbolKind::EnumConstructor {
+            return Ok(expr)
+        }
+        return none_and_report(self, expr)
+    }
+
+    if match CodeExpr::PrefixOp(prefix_op) = expr {
+        if prefix_op.op_tag == PrefixOpTag::Positive {
+            if match CodeExpr::IntLiteral(_) = prefix_op.expr {
+                return Ok(expr)
+            }
+        }
+
+        return none_and_report(self, expr)
+    }
+
+    if match CodeExpr::Cast(cast) = expr {
+        return self.get_const_value_or_err(ctx, cast.expr)
+    }
+
+    return none_and_report(self, expr)
+
+    fn none_and_report(typer: &Typer, expr: CodeExpr): Result(CodeExpr, &VoidError) {
+        typer.report_error(typer.registry.error_arena.new!(Error {
+            message: String::from_str_in(typer.registry.error_arena, "Expression not allowed in const context"),
+            loc: expr.loc(),
+        }))
+        return Err(VoidError::VALUE)
+    }
+}
+
+fn Typer::store_type(&self, ctx: &TyContext, expr_id: ExprId, type_: Type) {
+    let type_id = self.intern_type(type_)
+    return self.store_expr_info(ctx, expr_id, type_id)
+}
+
+fn Typer::store_expr_info(&self, ctx: &TyContext, expr_id: ExprId, expr_info: ExprInfo) {
+    let absolute_expr_id = ctx.expr_id_offset + expr_id
+    *self.registry.expr_info.at!(absolute_expr_id) = expr_info
+}
+
+fn Typer::intern_type(&self, type_: Type): TypeId {
+    return self.registry.intern_type(type_)
+}
+
+fn Typer::get_type(&self, type_id: TypeId): Type {
+    return self.registry.get_type(type_id)
+}
+
+inline fn Typer::report_if_err!(&self, res: infer(T)) {
+    if res.err as u32 != 0 {
+        self.report_error(res.err)
+    }
+}
+
+fn Typer::report_error(&self, err: &Error) {
+    self.reporter.error(err)
+}
+
+// statics
+
+fn Typer::count_primitive_components(registry: &Registry, type_: Type): u32 {
+    let layout = ref!(TypeLayout::new())
+
+    Typer::get_type_layout(registry, type_, layout)
+    return layout.primitives_count
+}
+
+// TODO: look into proper alignment rules
+fn Typer::get_type_layout(registry: &Registry, type_: Type, layout: &TypeLayout) {
+    if match Type::Never(_) = type_ {
+        return
+    }
+    if match Type::Void(_) = type_ {
+        return
+    }
+
+    if match Type::Bool(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.byte_size = Typer::align(layout.byte_size, 1) + 1
+        return
+    }
+
+    if match Type::U8(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.byte_size = Typer::align(layout.byte_size, 1) + 1
+        return
+    }
+
+    if match Type::I8(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.byte_size = Typer::align(layout.byte_size, 1) + 1
+        return
+    }
+
+    if match Type::U16(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 2)
+        layout.byte_size = Typer::align(layout.byte_size, 2) + 2
+        return
+    }
+
+    if match Type::I16(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 2)
+        layout.byte_size = Typer::align(layout.byte_size, 2) + 2
+        return
+    }
+
+    if match Type::U32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::I32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::Null(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(Type::U32)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::Pointer(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(Type::U32)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::F32(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 4)
+        layout.byte_size = Typer::align(layout.byte_size, 4) + 4
+        return
+    }
+
+    if match Type::U64(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 8)
+        layout.byte_size = Typer::align(layout.byte_size, 8) + 8
+        return
+    }
+
+    if match Type::I64(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 8)
+        layout.byte_size = Typer::align(layout.byte_size, 8) + 8
+        return
+    }
+
+    if match Type::F64(_) = type_ {
+        if layout.primitives != null {
+            layout.primitives.push!(type_)
+        }
+        layout.primitives_count += 1
+        layout.alignment = u32::max!(layout.alignment, 8)
+        layout.byte_size = Typer::align(layout.byte_size, 8) + 8
+        return
+    }
+
+    if match Type::Seg(seg) = type_ {
+        Typer::get_type_layout(registry, Type::U32, layout)
+        Typer::get_type_layout(registry, Type::Pointer(heap::new!(PointerType {
+            pointee: seg.item,
+            is_sequence: true,
+            is_nullable: false,
+        })), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    if match Type::Struct(struct_type) = type_ {
+        let struct_def = registry.structs.at!(struct_type.struct_index)
+
+        for &field in struct_def.fields.iter!() {
+            Typer::get_type_layout(registry, registry.get_type(field.field_type_id), layout)
+        }
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    if match Type::Enum(enum_type) = type_ {
+        let enum_def = registry.enums.at!(enum_type.enum_index)
+
+        Typer::get_type_layout(registry, Type::U32, layout)
+        Typer::get_type_layout(registry, registry.get_type(enum_def.variant_type_id), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    if match Type::Result(result) = type_ {
+        Typer::get_type_layout(registry, registry.get_type(result.ok), layout)
+        Typer::get_type_layout(registry, registry.get_type(result.err), layout)
+
+        layout.byte_size = Typer::align(layout.byte_size, layout.alignment)
+        return
+    }
+
+    if match Type::Container(ctr) = type_ {
+        Typer::get_type_layout(registry, registry.get_type(ctr.container), layout)
+        return
+    }
+
+    @unreachable()
+}
+
+fn Typer::align(value: u32, alignment: u32): u32 {
+    return (value + alignment - 1) / alignment * alignment
+}
+
+fn Typer::is_naturally_divergent(expr: CodeExpr): bool {
+    if match CodeExpr::BoolLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::CharLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::NullLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::IntLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::StringLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::StructLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::ArrayLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::ResultLiteral(_) = expr {
+        return false
+    }
+    if match CodeExpr::Ident(_) = expr {
+        return false
+    }
+    if match CodeExpr::Let(_) = expr {
+        return false
+    }
+    if match CodeExpr::Fn(_) = expr {
+        return false
+    }
+    if match CodeExpr::Cast(_) = expr {
+        return false
+    }
+    if match CodeExpr::Assign(_) = expr {
+        return false
+    }
+    if match CodeExpr::FieldAccess(_) = expr {
+        return false
+    }
+    if match CodeExpr::PropagateError(_) = expr {
+        return false
+    }
+    if match CodeExpr::FnCall(_) = expr {
+        return false
+    }
+    if match CodeExpr::MethodCall(_) = expr {
+        return false
+    }
+    if match CodeExpr::InlineFnCall(_) = expr {
+        return false
+    }
+    if match CodeExpr::If(_) = expr {
+        return false
+    }
+    if match CodeExpr::Sizeof(_) = expr {
+        return false
+    }
+    if match CodeExpr::While(_) = expr {
+        return false
+    }
+    if match CodeExpr::For(_) = expr {
+        return false
+    }
+    if match CodeExpr::Defer(_) = expr {
+        return false
+    }
+    if match CodeExpr::InlineMethodCall(_) = expr {
+        return false
+    }
+
+    if match CodeExpr::Break(_) = expr {
+        return true
+    }
+    if match CodeExpr::Continue(_) = expr {
+        return true
+    }
+    if match CodeExpr::Return(_) = expr {
+        return true
+    }
+
+    if match CodeExpr::Paren(paren_expr) = expr {
+        return Typer::is_naturally_divergent(paren_expr.expr)
+    }
+    if match CodeExpr::IntrinsicCall(intrinsic) = expr {
+        return intrinsic.fn_name.repr.equals("unreachable")
+    }
+
+    if match CodeExpr::Catch(catch_) = expr {
+        return Typer::is_naturally_divergent(catch_.lhs)
+    }
+    if match CodeExpr::InfixOp(infix) = expr {
+        return Typer::is_naturally_divergent(infix.lhs) || Typer::is_naturally_divergent(infix.rhs)
+    }
+    if match CodeExpr::PrefixOp(prefix) = expr {
+        return Typer::is_naturally_divergent(prefix.expr)
+    }
+    if match CodeExpr::Match(match_) = expr {
+        return Typer::is_naturally_divergent(match_.header.expr_to_match)
+    }
+    if match CodeExpr::Pipe(pipe) = expr {
+        return Typer::is_naturally_divergent(pipe.lhs) || Typer::is_naturally_divergent(pipe.rhs)
+    }
+
+    if match CodeExpr::DoWith(do_with_) = expr {
+        let divergent = Typer::is_naturally_divergent(do_with_.body)
+        for arg in do_with_.args.items.iter!() {
+            divergent = divergent || Typer::is_naturally_divergent(arg)
+        }
+        return divergent
+    }
+
+    @unreachable()
+}
+
+fn Typer::get_primitives(&self, type_: Type): &Vec(Type) {
+    let layout = ref!(TypeLayout::new())
+    layout.primitives = Vec::new!<Type>()
+
+    Typer::get_type_layout(self.registry, type_, layout)
+
+    return layout.primitives
+}
+
+fn Typer::is_noop_cast(primitives1: &Vec(Type), primitives2: &Vec(Type)): bool {
+    if primitives1.len != primitives2.len {
+        return false
+    }
+
+    for i in 0..primitives1.len {
+        let p1_wide = Typer::is_wide_int(primitives1.get!(i))
+        let p2_wide = Typer::is_wide_int(primitives2.get!(i))
+
+        if p1_wide.err as u32 != 0 || p2_wide.err as u32 != 0 {
+            return false
+        }
+
+        if p1_wide.ok != p2_wide.ok {
+            return false
+        }
+    }
+
+    return true
+}
+
+fn Typer::is_wide_int(type_: Type): Result(bool, &VoidError) {
+    if match Type::U64(_) = type_ {
+        return Ok(true)
+    }
+    if match Type::I64(_) = type_ {
+        return Ok(true)
+    }
+
+    if match Type::Bool(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U8(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I8(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U16(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I16(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::U32(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::I32(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::Null(_) = type_ {
+        return Ok(false)
+    }
+    if match Type::Pointer(_) = type_ {
+        return Ok(false)
+    }
+
+    return Err(VoidError::VALUE)
+}
+
+fn Typer::is_wide_int_tag(registry: &Registry, tag_type: Type, loc: Loc): Result(bool, &Error) {
+    let wide_result = Typer::is_wide_int(tag_type)
+    if wide_result.err as u32 != 0 {
+        let message = String::new_in(registry.error_arena, 16)
+        do message.push_str(it) with (
+            registry.fmt(tag_type),
+            " is not a valid int tag",
+        )
+
+        return Err(registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(wide_result.ok)
+}
+
+fn Typer::type_match_header(&self, ctx: &TyContext, match_header: &MatchHeader): Result(void, &Error) {
+    let symbol = self.get_symbol(ctx, match_header.variant_name.repr)
+    if symbol == null {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Unknown symbol"),
+            loc: match_header.variant_name.loc,
+        }))
+    }
+
+    if symbol.kind != TySymbolKind::EnumConstructor {
+        return Err(self.registry.error_arena.new!(Error {
+            message: String::from_str_in(self.registry.error_arena, "Not an enum variant"),
+            loc: match_header.variant_name.loc,
+        }))
+    }
+
+    let enum_ctor = self.registry.enum_ctors.at!(symbol.col_index)
+    let enum_variant = self.registry.enums.at!(enum_ctor.enum_index).variants.at!(enum_ctor.variant_index)
+
+    let expr_to_match_type_id_result = self.type_code_expr_and_load(ctx, match_header.expr_to_match)
+    if expr_to_match_type_id_result.err as u32 != 0 {
+        self.report_error(expr_to_match_type_id_result.err)
+    } else {
+        let expr_to_match_type = self.get_type(expr_to_match_type_id_result.ok)
+        let expected_expr_to_match_type = Type::Enum(heap::new!(EnumType {
+            enum_index: enum_ctor.enum_index,
+        }))
+        if !self.is_type_compatible(expected_expr_to_match_type, expr_to_match_type) {
+            let message = String::from_str_in(
+                self.registry.error_arena,
+                "Unexpected type to match, expected: ",
+            )
+            do message.push_str(it) with (
+                self.registry.fmt(expected_expr_to_match_type),
+                ", got: ",
+                self.registry.fmt(expr_to_match_type),
+            )
+
+            self.report_error(self.registry.error_arena.new!(Error {
+                message: message,
+                loc: match_header.expr_to_match.loc(),
+            }))
+        }
+    }
+
+    if self.reporter.in_inspection_mode {
+        let message = String::new_in(self.reporter.inspection_arena, 32)
+        do message.push_str(it) with (
+            self.registry.fmt(Type::Enum(heap::new!(EnumType {
+                enum_index: enum_ctor.enum_index,
+            }))),
+            "\n",
+            match_header.variant_name.repr,
+            "(",
+            self.registry.fmt(self.get_type(enum_variant.variant_type_id)),
+            ")",
+        )
+
+        self.reporter.print_inspection(InspectInfo {
+            message: message,
+            loc: match_header.variant_name.loc,
+            linked_loc: &enum_variant.loc,
+        })
+    }
+
+    let _ = self.define_local(
+        ctx,
+        &match_header.variant_bind.repr,
+        enum_variant.variant_type_id,
+        match_header.variant_bind.loc,
+        match_header.variant_bind.id,
+        true,
+    )
+
+    self.store_expr_info(ctx, match_header.variant_name.id, self.registry.value_info.len)
+    self.registry.value_info.push!(ValueInfo {
+        kind: ValueKind::EnumConstructor,
+        col_index: symbol.col_index,
+        type_id: enum_variant.variant_type_id,
+    })
+
+    return Ok()
+}
+
+fn Typer::assert_catchable_type(&self, expr_type: Type, loc: Loc): Result(&ResultType, &Error) {
+    match Type::Result(result) = expr_type else {
+        let message = String::from_str_in(self.registry.error_arena, "Cannot catch error from expr of type ")
+        message.push_str(self.registry.fmt(expr_type))
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    let err_type_components = self.get_primitives(self.get_type(result.err))
+    let u32_components = Vec::new!<Type>()
+    u32_components.push!(Type::U32)
+
+    if err_type_components.len != 1 || !Typer::is_noop_cast(err_type_components, u32_components) {
+        let message = String::from_str_in(self.registry.error_arena, "Invalid Result error type: ")
+        do message.push_str(it) with (
+            self.registry.fmt(self.get_type(result.err)),
+            ", must fit into U32 local",
+        )
+
+        return Err(self.registry.error_arena.new!(Error {
+            message: message,
+            loc: loc,
+        }))
+    }
+
+    return Ok(result)
+}
+
+fn Typer::process_const_string(&self, value: str): BytesSlice {
+    let string_len = value.len
+
+    for pooled_str in self.registry.string_pool.iter!() {
+        if pooled_str.value.as_str().equals(value) {
+            return BytesSlice {
+                ptr: pooled_str.ptr,
+                len: string_len,
+            }
+        }
+    }
+
+    let bytes_slice = self.append_data(value.iter!())
+
+    self.registry.string_pool.push!(PooledString {
+        value: String::from_str(value),
+        ptr: bytes_slice.ptr,
+    })
+
+    return bytes_slice
+}
+
+fn Typer::append_data(&self, bytes: seg(u8)): BytesSlice {
+    let bytes_len = bytes.len
+    let offset = self.registry.data_size
+
+    let instrs = Vec::new!<WasmInstr>()
+    instrs.push!(WasmInstr::I32Const(heap::new!(WasmInstrI32Const { value: offset as i32 })))
+
+    self.registry.data_size += bytes.len
+
+    let data_bytes = Vec::new!<u8>()
+    data_bytes.push_all!(bytes)
+
+    self.registry.datas.push!(WasmData::Active(heap::new!(WasmDataActive {
+        offset: WasmExpr { instrs: instrs },
+        bytes: data_bytes,
+    })))
+
+    return BytesSlice {
+        ptr: offset,
+        len: bytes_len,
+    }
+}
+
+fn Typer::push_const_expr_bytes(
+    &self,
+    output: &Vec(u8),
+    item: CodeExpr,
+    item_type: Type,
+): Result(void, &Error) {
+    if match CodeExpr::Cast(cast) = item {
+        return self.push_const_expr_bytes(output, cast.expr, item_type)
+    }
+    if match CodeExpr::Paren(paren) = item {
+        return self.push_const_expr_bytes(output, paren.expr, item_type)
+    }
+
+    if match CodeExpr::IntLiteral(int) = item {
+        if match Type::U8(_) = item_type {
+            output.push!(int.value as u8)
+            return Ok()
+        }
+
+        if match Type::I8(_) = item_type {
+            output.push!(int.value as i8 as u8)
+            return Ok()
+        }
+
+        if match Type::U16(_) = item_type {
+            let value = int.value as u16
+            output.push!(value as u8)
+            output.push!((value >> 8u16) as u8)
+            return Ok()
+        }
+
+        if match Type::I16(_) = item_type {
+            let value = int.value as i16 as u16
+            output.push!(value as u8)
+            output.push!((value >> 8u16) as u8)
+            return Ok()
+        }
+
+        if match Type::I32(_) = item_type {
+            let value = int.value as i32 as u32
+            output.push!(value as u8)
+            output.push!((value >> 8) as u8)
+            output.push!((value >> 16) as u8)
+            output.push!((value >> 24) as u8)
+            return Ok()
+        }
+
+        if match Type::U64(_) = item_type {
+            let value = int.value as u64
+            output.push!(value as u8)
+            output.push!((value >> 8u64) as u8)
+            output.push!((value >> 16u64) as u8)
+            output.push!((value >> 24u64) as u8)
+            output.push!((value >> 32u64) as u8)
+            output.push!((value >> 40u64) as u8)
+            output.push!((value >> 48u64) as u8)
+            output.push!((value >> 56u64) as u8)
+            return Ok()
+        }
+
+        if match Type::I64(_) = item_type {
+            let value = int.value as u64
+            output.push!(value as u8)
+            output.push!((value >> 8u64) as u8)
+            output.push!((value >> 16u64) as u8)
+            output.push!((value >> 24u64) as u8)
+            output.push!((value >> 32u64) as u8)
+            output.push!((value >> 40u64) as u8)
+            output.push!((value >> 48u64) as u8)
+            output.push!((value >> 56u64) as u8)
+            return Ok()
+        }
+
+        if match Type::U32(_) = item_type {
+            let value = int.value as u32
+            output.push!(value as u8)
+            output.push!((value >> 8) as u8)
+            output.push!((value >> 16) as u8)
+            output.push!((value >> 24) as u8)
+            return Ok()
+        }
+
+        todo!()
+    }
+
+    if match CodeExpr::StringLiteral(str_literal) = item {
+        let str_bytes = self.process_const_string(str_literal.value.as_str())
+
+        output.push!(str_bytes.ptr as u8)
+        output.push!((str_bytes.ptr >> 8) as u8)
+        output.push!((str_bytes.ptr >> 16) as u8)
+        output.push!((str_bytes.ptr >> 24) as u8)
+
+        output.push!(str_bytes.len as u8)
+        output.push!((str_bytes.len >> 8) as u8)
+        output.push!((str_bytes.len >> 16) as u8)
+        output.push!((str_bytes.len >> 24) as u8)
+
+        return Ok()
+    }
+
+    todo!()
+}
+
+type IncludeInfo = struct {
+    file_path: &StringLiteralExpr,
+    alias: &?String,
+    with_extern: bool,
+}
+
+fn get_include_info(arena: &Arena, expr: TopLevelExpr): Result(&?IncludeInfo, &Error) {
+    match TopLevelExpr::Intrinsic(intrinsic) = expr else {
+        return Ok(null)
+    }
+
+    if !intrinsic.fn_name.repr.equals("include") {
+        return Ok(null)
+    }
+
+    if intrinsic.type_args.len != 0 {
+        return Err(bad_signature(arena, intrinsic.fn_name))
+    }
+
+    let file_path = null as &?StringLiteralExpr
+    let alias = null as &?String
+    let with_extern = false
+
+    for arg in intrinsic.args.items.iter!() {
+        if match CodeExpr::StringLiteral(str_expr) = arg {
+            file_path = str_expr
+            continue
+        }
+
+        if match CodeExpr::Ident(ident) = arg {
+            if ident.repr.equals("with_extern") {
+                with_extern = true
+                continue
+            }
+        }
+
+        if match CodeExpr::Assign(assign) = arg {
+            if match CodeExpr::Ident(lhs) = assign.lhs {
+                if match CodeExpr::StringLiteral(rhs) = assign.rhs {
+                    if lhs.repr.equals("alias") {
+                        alias = heap::new!(rhs.value.clone())
+                        continue
+                    }
+                }
+            }
+        }
+    }
+
+    if file_path == null {
+        return Err(bad_signature(arena, intrinsic.fn_name))
+    }
+
+    return Ok(heap::new!(IncludeInfo {
+        file_path: file_path,
+        alias: alias,
+        with_extern: with_extern,
+    }))
+
+    fn bad_signature(arena: &Arena, fn_name: IdentExpr): &Error {
+        let message = String::from_str_in(arena, "Invalid call, expected signature: @")
+        do message.push_str(it) with (
+            fn_name.repr,
+            "(<str-literal>, [with_extern, alias = <str-literal>])",
+        )
+
+        return arena.new!(Error {
+            message: message,
+            loc: fn_name.loc,
+        })
+    }
+}
+
+// utils
+
+type StableVec = struct {
+    chunks: &Vec(&Vec),
+    chunk_size: u32,
+}
+
+inline fn StableVec::new!<T>(): StableVec(T) {
+    StableVec {
+        chunks: Vec::new!<&Vec>(),
+        chunk_size: 8,
+    }
+}
+
+inline fn StableVec::push!(self: infer(Self), item: itemof(Self)): &typeof(item) {
+    if self.chunks.len == 0 \
+        || self.chunks.get!(self.chunks.len - 1).len == self.chunk_size
+    {
+        self.chunks.push!(Vec::with_capacity!<typeof(item)>(self.chunk_size))
+    }
+
+    let last_chunk = self.chunks.get!(self.chunks.len - 1) as &Vec(typeof(item))
+    last_chunk.push!(item)
+
+    last_chunk.at!(last_chunk.len - 1)
+}
+
+fn StableVec::len(self): u32 {
+    let chunks_len = self.chunks.len
+    if chunks_len == 0 {
+        return 0
+    }
+
+    return (chunks_len - 1) * self.chunk_size \
+        + self.chunks.get!(chunks_len - 1).len
+}

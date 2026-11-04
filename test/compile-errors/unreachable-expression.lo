@@ -1,0 +1,7 @@
+fn main(): u32 {
+    return 1
+
+    // warning
+    let x = 2
+    return x
+}

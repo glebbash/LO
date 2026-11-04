@@ -1,0 +1,8 @@
+// error
+fn get(): u32 {
+    let x = 1
+}
+
+fn main() {
+    let _ = get()
+}
