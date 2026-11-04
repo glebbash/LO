@@ -329,7 +329,7 @@ The other compound types are tuples, laid out by the same rules:
 | plain enum     | `(tag: u32)`             |
 | `Name(T)`      | same as `Name`           |
 
-## 🧑‍💻 Expressions
+## 😶 Expressions
 
 ### Variables
 
