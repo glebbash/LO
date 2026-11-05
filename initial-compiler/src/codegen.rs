@@ -1115,18 +1115,20 @@ impl Codegen {
             CodeExpr::Break(break_expr) => {
                 let expr_info = self.registry.expr_info[break_expr.id];
                 let break_info = &self.registry.breaks[expr_info];
+                let label_index = break_info.label_index;
 
-                instrs.push(WasmInstr::Branch {
-                    label_index: break_info.label_index,
-                });
+                self.emit_deferred_for_loop_exit(ctx, instrs);
+
+                instrs.push(WasmInstr::Branch { label_index });
             }
             CodeExpr::Continue(continue_expr) => {
                 let expr_info = self.registry.expr_info[continue_expr.id];
                 let break_info = &self.registry.breaks[expr_info];
+                let label_index = break_info.label_index;
 
-                instrs.push(WasmInstr::Branch {
-                    label_index: break_info.label_index,
-                });
+                self.emit_deferred_for_loop_exit(ctx, instrs);
+
+                instrs.push(WasmInstr::Branch { label_index });
             }
             CodeExpr::DoWith(do_with) => {
                 let arg_type = self.get_expr_type(ctx, do_with.args.items.first().unwrap());
@@ -1935,6 +1937,16 @@ impl Codegen {
     fn emit_deferred_for_return(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
         for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
             self.emit_deferred(scope, instrs);
+        }
+    }
+
+    fn emit_deferred_for_loop_exit(&self, ctx: &ExprContext, instrs: &mut Vec<WasmInstr>) {
+        for scope in self.module_info[ctx.module_id].scope_stack.iter().rev() {
+            self.emit_deferred(scope, instrs);
+
+            if scope.kind == ScopeKind::Loop || scope.kind == ScopeKind::ForLoop {
+                break;
+            }
         }
     }
 

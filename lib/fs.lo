@@ -143,3 +143,129 @@ fn fs::close(fd: u32): Result(void, wasi::Err) {
     }
     return Ok()
 }
+
+// directory listing
+
+type fs::DirEntry = struct {
+    name: String,
+    is_dir: bool,
+}
+
+fn fs::DirEntry::free(self) {
+    self.name.free()
+}
+
+// lists the immediate (non-recursive) entries of a directory
+fn fs::list_dir(dir_path: str): Result(&Vec(fs::DirEntry), wasi::Err) {
+    fs::_unlock()
+
+    let fd = fs::open(dir_path)?
+    defer let _ = wasi::fd_close(fd)
+
+    let entries = Vec::new!<fs::DirEntry>()
+
+    // each entry is a `wasi::dirent` header followed by `d_namlen` bytes of the file name
+    let header_size = sizeof wasi::dirent
+    let cookie = 0u64
+    let buf_cap = 4096u32
+    loop {
+        // TODO?: try a version where inline fns always bind their arguments to locals before call
+        // snapshotted into its own immutable local because `tmp_alloc_many!`'s `defer`
+        // re-reads this expression at flush time (`continue` below), not at alloc time -
+        // mutating `buf_cap` itself before that flush would free the wrong size
+        let this_cap = buf_cap
+        let bufused_ref = tmp_alloc!<u32>()
+        let buf = tmp_alloc_many!<u8>(this_cap)
+
+        let err = wasi::fd_readdir(fd, buf, this_cap, cookie, bufused_ref)
+        if err != wasi::Err::SUCCESS {
+            return Err(err)
+        }
+
+        let bufused = *bufused_ref
+        let data = str { ptr: buf, len: bufused }
+
+        let offset = 0u32
+        let truncated = false
+        while offset < bufused {
+            if offset + header_size > bufused {
+                truncated = true
+                break
+            }
+
+            let entry = (data.ptr as u32 + offset) as &wasi::dirent
+            let name_len = entry.d_namlen
+
+            if offset + header_size + name_len > bufused {
+                truncated = true
+                break
+            }
+
+            let entry_name = data.slice(offset + header_size, offset + header_size + name_len)
+
+            if !entry_name.equals(".") && !entry_name.equals("..") {
+                entries.push!(fs::DirEntry {
+                    name: String::from_str(entry_name),
+                    is_dir: entry.d_type as u32 == wasi::FILETYPE_DIRECTORY,
+                })
+            }
+
+            cookie = entry.d_next
+            offset += header_size + name_len
+        }
+
+        if truncated {
+            // last entry didn't fit: grow the buffer and retry from the same `cookie`
+            buf_cap = this_cap * 2
+            continue
+        }
+
+        if bufused < this_cap {
+            break // reached the end of the directory
+        }
+    }
+
+    return Ok(entries)
+}
+
+// recursively lists paths of all regular files found under `dir_path` (relative to `dir_path`)
+fn fs::list_files_recursive(dir_path: str): Result(&Vec(String), wasi::Err) {
+    let output = Vec::new!<String>()
+    fs::_list_files_recursive_into(dir_path, "", output)?
+    return Ok(output)
+}
+
+fn fs::_list_files_recursive_into(
+    base_dir: str,
+    rel_dir: str,
+    output: &Vec(String),
+): Result(void, wasi::Err) {
+    let current_dir = String::new(base_dir.len + 1 + rel_dir.len)
+    defer current_dir.free()
+    current_dir.push_str(base_dir)
+    if rel_dir.len != 0 {
+        current_dir.push_str("/")
+        current_dir.push_str(rel_dir)
+    }
+
+    let entries = fs::list_dir(current_dir.as_str())?
+    defer entries.free_deep!()
+
+    for entry in entries.iter!() {
+        let rel_path = String::new(rel_dir.len + 1 + entry.name.len())
+        if rel_dir.len != 0 {
+            rel_path.push_str(rel_dir)
+            rel_path.push_str("/")
+        }
+        rel_path.push_str(entry.name.as_str())
+
+        if entry.is_dir {
+            fs::_list_files_recursive_into(base_dir, rel_path.as_str(), output)?
+            rel_path.free()
+        } else {
+            output.push!(rel_path)
+        }
+    }
+
+    return Ok()
+}

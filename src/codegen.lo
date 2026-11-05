@@ -763,11 +763,23 @@ fn Codegen::codegen(
         }
 
         if call.fn_name.repr.equals("embed_file") {
-            match CodeExpr::StringLiteral(str_literal) = call.args.items.get!(0) else {
-                @unreachable()
-            }
+            let arg = call.args.items.get!(0)
+            let expr_info = self.get_expr_info(ctx, arg.id(), arg.loc())
+            let stored_bytes = self.registry.stored_bytes.at!(expr_info)
 
-            let expr_info = self.get_expr_info(ctx, str_literal.id, str_literal.loc)
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.ptr as i32 }),
+            ))
+            instrs.push!(WasmInstr::I32Const(
+                self.wasm_module.arena.new!(WasmInstrI32Const { value: stored_bytes.info.len as i32 }),
+            ))
+
+            return
+        }
+
+        if call.fn_name.repr.equals("embed_files") {
+            let arg = call.args.items.get!(0)
+            let expr_info = self.get_expr_info(ctx, arg.id(), arg.loc())
             let stored_bytes = self.registry.stored_bytes.at!(expr_info)
 
             instrs.push!(WasmInstr::I32Const(
@@ -1140,6 +1152,8 @@ fn Codegen::codegen(
         let expr_info = self.get_expr_info(ctx, break_expr.id, break_expr.loc)
         let break_info = self.registry.breaks.at!(expr_info)
 
+        self.emit_deferred_for_loop_exit(ctx, instrs)
+
         instrs.push!(WasmInstr::Branch(
             self.wasm_module.arena.new!(WasmInstrBranch { label_index: break_info.label_index }),
         ))
@@ -1149,6 +1163,8 @@ fn Codegen::codegen(
     if match CodeExpr::Continue(continue_expr) = expr {
         let expr_info = self.get_expr_info(ctx, continue_expr.id, continue_expr.loc)
         let break_info = self.registry.breaks.at!(expr_info)
+
+        self.emit_deferred_for_loop_exit(ctx, instrs)
 
         instrs.push!(WasmInstr::Branch(
             self.wasm_module.arena.new!(WasmInstrBranch { label_index: break_info.label_index }),
@@ -1887,6 +1903,19 @@ fn Codegen::codegen_load_or_store(
         return
     }
 
+    if match Type::AnonymousStruct(anon_struct_type) = pointee_type {
+        for i in 0..anon_struct_type.fields.len {
+            let field = anon_struct_type.fields.get!(anon_struct_type.fields.len - 1 - i)
+            self.codegen_load_or_store(
+                instrs,
+                self.get_type(field.field_type),
+                offset + field.byte_offset,
+                is_store,
+            )
+        }
+        return
+    }
+
     if match Type::Enum(enum_type) = pointee_type {
         let enum_def = self.registry.enums.at!(enum_type.enum_index)
 
@@ -1990,6 +2019,22 @@ fn Codegen::emit_deferred_for_return(
     for i in 0..scope_stack.len {
         let scope = scope_stack.at!(scope_stack.len - i - 1)
         self.emit_deferred(scope, instrs)
+    }
+}
+
+fn Codegen::emit_deferred_for_loop_exit(
+    &self,
+    ctx: &ExprContext,
+    instrs: &Vec(WasmInstr),
+) {
+    let scope_stack = self.module_info.at!(ctx.module_id).scope_stack
+    for i in 0..scope_stack.len {
+        let scope = scope_stack.at!(scope_stack.len - i - 1)
+        self.emit_deferred(scope, instrs)
+
+        if scope.kind == ScopeKind::Loop || scope.kind == ScopeKind::ForLoop {
+            break
+        }
     }
 }
 
@@ -2180,6 +2225,13 @@ fn Codegen::lower_type(&self, type_: Type, wasm_types: &Vec(WasmType)) {
         return
     }
 
+    if match Type::AnonymousStruct(anon_struct_type) = type_ {
+        for &field in anon_struct_type.fields.iter!() {
+            self.lower_type(self.get_type(field.field_type), wasm_types)
+        }
+        return
+    }
+
     if match Type::Enum(enum_type) = type_ {
         let enum_def = self.registry.enums.at!(enum_type.enum_index)
 
@@ -2339,6 +2391,21 @@ fn Codegen::push_wasm_dbg_name_section_locals(
                 output,
                 local_index,
                 self.get_type(field.field_type_id),
+                field_local_name.as_str(),
+            )
+        }
+        return local_index
+    }
+
+    if match Type::AnonymousStruct(anon_struct_type) = local_type {
+        for &field in anon_struct_type.fields.iter!() {
+            let field_local_name = String::new_in(self.registry.error_arena, 16)
+            do field_local_name.push_str(it) with (local_name, ".", field.field_name)
+
+            local_index = self.push_wasm_dbg_name_section_locals(
+                output,
+                local_index,
+                self.get_type(field.field_type),
                 field_local_name.as_str(),
             )
         }

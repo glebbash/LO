@@ -1,0 +1,12 @@
+@include("../lib/cli.lo")
+
+inline let ASSETS = @embed_files("test/embed-test-assets")
+
+fn main() {
+    for asset in ASSETS {
+        do print(it) with (
+            "file '", \\ asset.name, \\ "':\n",
+            (asset.content as str), \\ "\n",
+        )
+    }
+}

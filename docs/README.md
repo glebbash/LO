@@ -5,6 +5,7 @@
 <br/>
 
 If you'd just rather read learn from examples:
+
 - [test](../test/) - small test/showcase programs for all of the language features
 - [lib](../lib/) - standard library
 - [src](../src/) - the compiler itself
@@ -12,6 +13,7 @@ If you'd just rather read learn from examples:
 <br/>
 
 Table of contents:
+
 - [👀 Overview](#-overview)
 - [📝 Syntax](#-syntax)
 - [🧱 Types](#-types)
@@ -966,7 +968,6 @@ The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a
 - **Prefix operators take too much.** `*p + 1` parses as `*(p + 1)`, `*p as u32` as `*(p as u32)` and `!a + b` as `!(a + b)`. Wrap the operand for now: `(*p) + 1`.
 - **Small integers aren't truncated.** Integers narrower than 32 bits live in 32-bit WASM values, so `250u8 + 10u8` is `260` and `300 as u8` stays `300`. Only storing to memory keeps the low bits.
 - **Inline function arguments are substituted.** An argument used twice is evaluated twice, and an unused one is never evaluated. Copy arguments into variables when that matters.
-- **`break` and `continue` skip defers.** The pending defers of the blocks they leave don't run.
 - **Includes are always re-exported.** Every include behaves as if it had `with_extern`. The flag itself only matters for include cycles.
 - **Payload enums ignore explicit tags.** Explicit tags are accepted on enums with a payload slot, but payload variants are built with their position as the tag, so `match` doesn't recognize them.
 - **`inline let` in a function body** is accepted, but the constant is never set and reads as zero. It should be a compile error.
@@ -986,4 +987,3 @@ The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a
 ### Planned removals
 
 - **`f32` and `f64`** exist as type names only to cover every WASM type. They have no support, and values of these types crash code generation.
-- **`@inspect_stats()`** is not functional in self-hosted compiler and will be removed.

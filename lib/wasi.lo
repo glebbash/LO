@@ -24,6 +24,16 @@ type wasi::fdstat = struct {
     fs_rights_inheriting: u64,
 }
 
+inline let wasi::FILETYPE_DIRECTORY = 3
+inline let wasi::FILETYPE_REGULAR_FILE = 4
+
+type wasi::dirent = struct {
+    d_next: u64, // the cookie to resume reading from after this entry
+    d_ino: u64, // the inode number of the file this entry refers to
+    d_namlen: u32, // the length in bytes of the name that follows this header
+    d_type: u8, // one of the `wasi::FILETYPE_*` constants
+}
+
 fn wasi::path_open(
     dirfd: u32, // The file descriptor representing the directory that the file is located in.
     dirflags: u32, // Flags specifying how the path will be resolved.
@@ -82,4 +92,12 @@ fn wasi::fd_prestat_dir_name(
 fn wasi::fd_fdstat_get(
     fd: u32, // The file descriptor whose metadata will be accessed.
     buf: &wasi::fdstat, // A pointer to a memory location where the metadata will be written.
+): wasi::Err = @import_from("wasi_snapshot_preview1")
+
+fn wasi::fd_readdir(
+    fd: u32, // The directory file descriptor to read from.
+    buf: &[]u8, // A wasm pointer to a buffer where `wasi::dirent` entries will be written.
+    buf_len: u32, // The size of `buf`.
+    cookie: u64, // The location within the directory to start reading from.
+    bufused: &u32, // Pointer to store the number of bytes actually written to `buf`.
 ): wasi::Err = @import_from("wasi_snapshot_preview1")

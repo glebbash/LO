@@ -17,6 +17,7 @@ export type WASISysCalls = {
     fdRead(fd: number, buffer: Uint8Array): number;
     fdWrite(fd: number, buffer: Uint8Array): number;
     fdClose(fd: number): void;
+    listDir(path: string): Array<{ name: string; isDirectory: boolean }>;
 };
 
 export type FD = {
@@ -25,6 +26,10 @@ export type FD = {
     read(buffer: Uint8Array): { code: number; nread: number };
     write(buffer: Uint8Array): { code: number; nwritten: number };
     close(): number;
+    listDir(): {
+        code: number;
+        entries?: Array<{ name: string; isDirectory: boolean }>;
+    };
 };
 
 const WASI_ERRNO_SUCCESS = 0;
@@ -63,6 +68,17 @@ class SysFD implements FD {
             return { code: WASI_ERRNO_SUCCESS, fd };
         } catch {
             return { code: WASI_ERRNO_NOENT, fd: undefined };
+        }
+    }
+
+    listDir() {
+        try {
+            return {
+                code: WASI_ERRNO_SUCCESS,
+                entries: this.sysCalls.listDir(this.sysDirName),
+            };
+        } catch {
+            return { code: WASI_ERRNO_NOENT, entries: undefined };
         }
     }
 
@@ -182,6 +198,10 @@ class VirtualFD implements FD {
     openChild(): never {
         throw new Error("Not supported");
     }
+
+    listDir(): never {
+        throw new Error("Not supported");
+    }
 }
 
 export class WASI {
@@ -254,53 +274,19 @@ export class WASI {
                     process.exit(1);
                 }
             },
-        };
-    }
-
-    static DenoSysCalls(): WASISysCalls {
-        const files: Map<number, Deno.FsFile> = new Map();
-
-        const getFile = (fd: number) => {
-            if (fd === 0) {
-                return Deno.stdin as never;
-            } else if (fd === 1) {
-                return Deno.stdout as never;
-            } else if (fd === 2) {
-                return Deno.stderr as never;
-            }
-
-            const file = files.get(fd);
-            if (file === undefined) {
-                throw new Error(`Unknown fd: ${fd}`);
-            }
-
-            return file;
-        };
-
-        return {
-            processExit: (exitCode) => Deno.exit(exitCode),
-            pathOpen: (path, mode) => {
-                const file = Deno.openSync(
-                    path,
-                    mode === "r" ? { read: true } : { write: true },
-                );
-
-                const fd = files.size + 3;
-                files.set(fd, file);
-                return fd;
-            },
-            fdRead: (fd, buffer) => {
-                const file = getFile(fd);
-                return file.readSync(buffer) ?? 0;
-            },
-            fdWrite: (fd, buffer) => {
-                const file = getFile(fd);
-                return file.writeSync(buffer) ?? 0;
-            },
-            fdClose: (fd) => {
-                const file = getFile(fd);
-                return file.close();
-            },
+            listDir: (path) => [
+                { name: ".", isDirectory: true },
+                { name: "..", isDirectory: true },
+                ...fs
+                    .readdirSync(path, { withFileTypes: true })
+                    .map((entry) => ({
+                        name: entry.name,
+                        isDirectory: entry.isDirectory(),
+                    }))
+                    .sort((a, b) =>
+                        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+                    ),
+            ],
         };
     }
 
@@ -630,6 +616,67 @@ export class WASI {
                     );
                     const memory = new DataView(this.memory.buffer);
                     memory.setBigUint64(time, now, true);
+                    return WASI_ERRNO_SUCCESS;
+                },
+                fd_readdir: (
+                    fd: number,
+                    buf_ptr: number,
+                    buf_len: number,
+                    cookie: bigint,
+                    bufused_ptr: number,
+                ) => {
+                    const WASI_DIRENT_SIZE = 24; // d_next: u64, d_ino: u64, d_namlen: u32, d_type: u8 (+ padding)
+
+                    const dir = this.fds[fd];
+                    if (dir === undefined) {
+                        return WASI_ERRNO_BADF;
+                    }
+
+                    const { code, entries } = dir.listDir();
+                    if (code !== WASI_ERRNO_SUCCESS || entries === undefined) {
+                        return code;
+                    }
+
+                    // the directory listing is re-read on every call,
+                    // a plain index into it is used as the dirent cookie
+                    const startIndex = Number(cookie);
+
+                    const memory = new DataView(this.memory.buffer);
+                    const bufBytes = new Uint8Array(this.memory.buffer);
+                    const encoder = new TextEncoder();
+
+                    let bufused = 0;
+                    for (let i = startIndex; i < entries.length; i++) {
+                        const entry = entries[i];
+                        const nameBytes = encoder.encode(entry.name);
+                        const entrySize = WASI_DIRENT_SIZE + nameBytes.length;
+                        const direntType = entry.isDirectory
+                            ? WASI_FILETYPE_DIRECTORY
+                            : WASI_FILETYPE_REGULAR_FILE;
+
+                        const dirent = new Uint8Array(entrySize);
+                        const direntView = new DataView(dirent.buffer);
+                        direntView.setBigUint64(0, BigInt(i + 1), true); // d_next
+                        direntView.setBigUint64(8, 0n, true); // d_ino
+                        direntView.setUint32(16, nameBytes.length, true); // d_namlen
+                        direntView.setUint8(20, direntType); // d_type
+                        dirent.set(nameBytes, WASI_DIRENT_SIZE);
+
+                        // per spec, a trailing entry that doesn't fully fit is truncated
+                        const remaining = buf_len - bufused;
+                        const bytesToCopy = Math.min(remaining, entrySize);
+                        bufBytes.set(
+                            dirent.subarray(0, bytesToCopy),
+                            buf_ptr + bufused,
+                        );
+                        bufused += bytesToCopy;
+
+                        if (bytesToCopy < entrySize) {
+                            break;
+                        }
+                    }
+
+                    memory.setUint32(bufused_ptr, bufused, true);
                     return WASI_ERRNO_SUCCESS;
                 },
             },

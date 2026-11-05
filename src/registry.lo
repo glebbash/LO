@@ -554,6 +554,30 @@ fn Registry::fmt(&self, type_: Type): str {
         return self.structs.at!(struct_type.struct_index).struct_name
     }
 
+    if match Type::AnonymousStruct(anon_struct_type) = type_ {
+        let out = String::new_in(self.error_arena, 16)
+
+        if anon_struct_type.fields.len == 0 {
+            out.push_str("struct {}")
+            return out.as_str()
+        }
+
+        out.push_str("struct { ")
+        for i in 0..anon_struct_type.fields.len {
+            let field = anon_struct_type.fields.get!(i)
+
+            if i != 0 {
+                out.push_str(", ")
+            }
+
+            out.push_str(field.field_name)
+            out.push_str(": ")
+            out.push_str(self.fmt(self.get_type(field.field_type)))
+        }
+        out.push_str(" }")
+        return out.as_str()
+    }
+
     if match Type::Enum(enum_type) = type_ {
         return self.enums.at!(enum_type.enum_index).enum_name
     }
