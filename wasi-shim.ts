@@ -13,16 +13,21 @@ export type WASIOptions = {
 
 export type WASISysCalls = {
     processExit(exitCode: number): never;
-    pathOpen(path: string, mode: "r" | "w"): number;
+    pathOpen(path: string, mode: "r" | "w" | "wx"): number;
     fdRead(fd: number, buffer: Uint8Array): number;
     fdWrite(fd: number, buffer: Uint8Array): number;
     fdClose(fd: number): void;
     listDir(path: string): Array<{ name: string; isDirectory: boolean }>;
+    mkdir(path: string): void;
 };
 
 export type FD = {
     getPreopenDirName(): string;
-    openChild(fileName: string, mode: "r" | "w"): { code: number; fd?: FD };
+    openChild(
+        fileName: string,
+        mode: "r" | "w" | "wx",
+    ): { code: number; fd?: FD };
+    createChildDir(dirName: string): number;
     read(buffer: Uint8Array): { code: number; nread: number };
     write(buffer: Uint8Array): { code: number; nwritten: number };
     close(): number;
@@ -35,6 +40,7 @@ export type FD = {
 const WASI_ERRNO_SUCCESS = 0;
 const WASI_ERRNO_BADF = 8;
 const WASI_ERRNO_NOENT = 2;
+const WASI_ERRNO_EXIST = 20;
 const WASI_ERRNO_INVAL = 28;
 
 const WASI_FILETYPE_DIRECTORY = 3;
@@ -59,15 +65,31 @@ class SysFD implements FD {
         return this.sysDirName;
     }
 
-    openChild(fileName: string, mode: "r" | "w") {
+    openChild(fileName: string, mode: "r" | "w" | "wx") {
         const fullPath = `${this.sysDirName}/${fileName}`;
         try {
             const sysFd = this.sysCalls.pathOpen(fullPath, mode);
             const fd = new SysFD(sysFd, fullPath, this.sysCalls);
 
             return { code: WASI_ERRNO_SUCCESS, fd };
-        } catch {
+        } catch (err) {
+            if ((err as { code?: string })?.code === "EEXIST") {
+                return { code: WASI_ERRNO_EXIST, fd: undefined };
+            }
             return { code: WASI_ERRNO_NOENT, fd: undefined };
+        }
+    }
+
+    createChildDir(dirName: string): number {
+        const fullPath = `${this.sysDirName}/${dirName}`;
+        try {
+            this.sysCalls.mkdir(fullPath);
+            return WASI_ERRNO_SUCCESS;
+        } catch (err) {
+            if ((err as { code?: string })?.code === "EEXIST") {
+                return WASI_ERRNO_EXIST;
+            }
+            return WASI_ERRNO_NOENT;
         }
     }
 
@@ -199,6 +221,10 @@ class VirtualFD implements FD {
         throw new Error("Not supported");
     }
 
+    createChildDir(): never {
+        throw new Error("Not supported");
+    }
+
     listDir(): never {
         throw new Error("Not supported");
     }
@@ -266,6 +292,7 @@ export class WASI {
             pathOpen: (path, mode) => fs.openSync(path, mode),
             fdRead: (fd, buffer) => fs.readSync(fd, buffer),
             fdWrite: (fd, buffer) => fs.writeSync(fd, buffer),
+            mkdir: (path) => fs.mkdirSync(path),
             fdClose: (fd) => {
                 try {
                     fs.closeSync(fd);
@@ -348,7 +375,7 @@ export class WASI {
                     _dirflags: number,
                     path_ptr: number,
                     path_len: number,
-                    _oflags: number,
+                    oflags: number,
                     _fs_rights_base: number,
                     _fs_rights_inheriting: number,
                     _fdflags: number,
@@ -368,9 +395,17 @@ export class WASI {
                         .decode(pathBytes)
                         .replace(/\0/g, "");
 
+                    const OFLAGS_CREAT = 1;
+                    const OFLAGS_EXCL = 4;
+                    const mode =
+                        (oflags & OFLAGS_CREAT) !== 0 &&
+                        (oflags & OFLAGS_EXCL) !== 0
+                            ? "wx"
+                            : "r";
+
                     const { code: err, fd: childFile } = dir.openChild(
                         path,
-                        "r",
+                        mode,
                     );
                     if (childFile !== undefined) {
                         this.fds.push(childFile);
@@ -381,6 +416,27 @@ export class WASI {
                     }
 
                     return err;
+                },
+                path_create_directory: (
+                    dirfd: number,
+                    path_ptr: number,
+                    path_len: number,
+                ) => {
+                    const dir = this.fds[dirfd];
+                    if (dir === undefined) {
+                        return WASI_ERRNO_BADF;
+                    }
+
+                    const pathBytes = new Uint8Array(
+                        this.memory.buffer,
+                        path_ptr,
+                        path_len,
+                    );
+                    const path = new TextDecoder()
+                        .decode(pathBytes)
+                        .replace(/\0/g, "");
+
+                    return dir.createChildDir(path);
                 },
                 fd_read: (
                     fd: number,

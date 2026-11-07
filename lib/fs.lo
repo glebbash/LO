@@ -144,6 +144,89 @@ fn fs::close(fd: u32): Result(void, wasi::Err) {
     return Ok()
 }
 
+fn fs::create_dir(dir_path: str): Result(void, wasi::Err) {
+    let err = wasi::path_create_directory(fs::CWD_PREOPEN_FD, dir_path.ptr, dir_path.len)
+    if err != wasi::Err::SUCCESS && err != wasi::Err::EXIST {
+        return Err(err)
+    }
+    return Ok()
+}
+
+// creates every directory segment of `file_path`, except the file name itself
+fn fs::create_parent_dirs(file_path: str): Result(void, wasi::Err) {
+    let parts = file_path.split('/', Vec::new!<str>())
+    defer parts.free()
+
+    let dir_path = String::new(file_path.len)
+    defer dir_path.free()
+
+    for i in 0..(parts.len - 1) {
+        if i != 0 {
+            dir_path.push_str("/")
+        }
+        dir_path.push_str(parts.get!(i))
+        fs::create_dir(dir_path.as_str())?
+    }
+
+    return Ok()
+}
+
+fn fs::create_file_exclusive(file_path: str): Result(u32, wasi::Err) {
+    let fd_ref = tmp_alloc!<u32>()
+    let err = wasi::path_open(
+        fs::CWD_PREOPEN_FD,
+        1,
+        file_path.ptr,
+        file_path.len,
+        wasi::OFLAGS_CREAT | wasi::OFLAGS_EXCL,
+        268_435_455u64,
+        268_435_455u64,
+        0,
+        fd_ref,
+    )
+    if err != wasi::Err::SUCCESS {
+        return Err(err)
+    }
+    return Ok(*fd_ref)
+}
+
+fn fs::write_fd(fd: u32, data: seg(u8)): Result(void, wasi::Err) {
+    let iovs = tmp_alloc_many!<wasi::IOVec>(1)
+    let nwritten_ref = tmp_alloc!<u32>()
+
+    let offset = 0u32
+    while offset < data.len {
+        *(iovs as &wasi::IOVec) = wasi::IOVec {
+            base: (data.ptr as u32 + offset) as &[]u8,
+            size: data.len - offset,
+        }
+        let err = wasi::fd_write(fd, iovs, 1, nwritten_ref)
+        if err != wasi::Err::SUCCESS {
+            return Err(err)
+        }
+        offset += *nwritten_ref
+    }
+
+    return Ok()
+}
+
+// writes `content` to `file_path`, creates parent dirs,
+// does nothing and does not error if the file already exists
+fn fs::write_new_file(file_path: str, content: seg(u8)): Result(void, wasi::Err) {
+    fs::_unlock()
+    fs::create_parent_dirs(file_path)?
+
+    let fd = fs::create_file_exclusive(file_path) catch err {
+        if err == wasi::Err::EXIST {
+            return Ok()
+        }
+        return Err(err)
+    }
+    defer let _ = wasi::fd_close(fd)
+
+    return fs::write_fd(fd, content)
+}
+
 // directory listing
 
 type fs::DirEntry = struct {

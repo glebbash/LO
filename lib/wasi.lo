@@ -3,9 +3,13 @@ type wasi::Err = u32
 inline let wasi::Err::SUCCESS = 0
 inline let wasi::Err::AGAIN = 6
 inline let wasi::Err::BADF = 8
+inline let wasi::Err::EXIST = 20
 inline let wasi::FD_STDIN = 0
 inline let wasi::FD_STDOUT = 1
 inline let wasi::FD_STDERR = 2
+
+inline let wasi::OFLAGS_CREAT = 1
+inline let wasi::OFLAGS_EXCL = 4
 
 type wasi::IOVec = struct {
     base: &[]u8,
@@ -44,6 +48,12 @@ fn wasi::path_open(
     fs_rights_inheriting: u64, // The rights of file descriptors derived from the created file descriptor.
     fdflags: u32, // The flags of the file descriptor.
     fd: &u32, // A wasm pointer to a wasiFd variable where the new file descriptor will be stored.
+): wasi::Err = @import_from("wasi_snapshot_preview1")
+
+fn wasi::path_create_directory(
+    dirfd: u32, // The file descriptor representing the directory that the new directory will be created in.
+    path: &[]u8, // A wasm pointer to a string containing the path of the new directory.
+    path_len: u32, // The length of the path string.
 ): wasi::Err = @import_from("wasi_snapshot_preview1")
 
 fn wasi::fd_read(

@@ -735,33 +735,34 @@ Top-level directives:
 
 Expressions:
 
-| Intrinsic                                      | Type                | Purpose                                                               |
-| ---------------------------------------------- | ------------------- | --------------------------------------------------------------------- |
-| `@unreachable()`                               | `never`             | traps                                                                 |
-| `@memory_size()`                               | `i32`               | memory size in pages                                                  |
-| `@memory_grow(pages: u32)`                     | `i32`               | grows memory, returns the previous size or `-1`                       |
-| `@memory_copy(dest: u32, src: u32, size: u32)` | `void`              | copies `size` bytes                                                   |
-| `@data_size()`                                 | `u32`               | end of static data, only as a global's value                          |
-| `@embed_file("path")`                          | `seg(u8)`           | a file's bytes as static data, with the path resolved like `@include` |
-| `@seg(ptr: &[]T, len: u32)`                    | `seg(T)`            | builds a segment                                                      |
-| `@inline_fn_call_loc()`                        | string literal type | location of the current inline function call                          |
+| Intrinsic                                      | Type                                 | Purpose                                         |
+| ---------------------------------------------- | ------------------------------------ | ----------------------------------------------- |
+| `@unreachable()`                               | `never`                              | traps                                           |
+| `@memory_size()`                               | `i32`                                | memory size in pages                            |
+| `@memory_grow(pages: u32)`                     | `i32`                                | grows memory, returns the previous size or `-1` |
+| `@memory_copy(dest: u32, src: u32, size: u32)` | `void`                               | copies `size` bytes                             |
+| `@data_size()`                                 | `u32`                                | end of static data, only as a global's value    |
+| `@embed_file("path")`                          | `seg(u8)`                            | bakes in file's contents                        |
+| `@embed_files("dir_path")`                     | `seg({name: str, content: seg(u8)})` | bakes in folder's contents                      |
+| `@seg(ptr: &[]T, len: u32)`                    | `seg(T)`                             | builds a segment                                |
+| `@inline_fn_call_loc()`                        | string literal type                  | location of the current inline function call    |
 
 ## 📚 Standard library
 
 The standard library lives in [lib](../lib/). WASI programs usually include just `cli.lo`.
 
-| File            | Provides                                                                                              |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| `cli.lo`        | `std.lo`, `wasi.lo` and `print.lo`, 40 pages of exported memory, and your `main` exported as `_start` |
-| `std.lo`        | `str`, allocators, `Vec`, `String`, number formatting and helpers                                     |
-| `print.lo`      | `print`, `println`, `eprint`, `eprintln`, `fprint(fd, s)`                                             |
-| `fs.lo`         | `fs::read_file!`, `fs::read_file`, `fs::open`, `fs::read_fd`, `fs::pipe`, `fs::close`                 |
-| `args.lo`       | `Args::load()`, `args.argc`, `args.get(i)`, `args.free()`                                             |
-| `wasi.lo`       | WASI preview 1 imports and types                                                                      |
-| `int_parser.lo` | `parse_u32`, `parse_u32_hex`                                                                          |
-| `str_cutter.lo` | `StrCutter`, which splits a `str` piece by piece                                                      |
-| `debug.lo`      | `debug_u32::log`, host logging provided by `utils.ts`                                                 |
-| `wasm4.lo`      | [WASM-4](https://wasm4.org) bindings, see the [demos](../test/demos/wasm4/)                           |
+| File            | Provides                                                                                                                      |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `cli.lo`        | `std.lo`, `wasi.lo` and `print.lo`, 40 pages of exported memory, and your `main` exported as `_start`                         |
+| `std.lo`        | `str`, allocators, `Vec`, `String`, number formatting and helpers                                                             |
+| `print.lo`      | `print`, `println`, `eprint`, `eprintln`, `fprint(fd, s)`                                                                     |
+| `fs.lo`         | `fs::read_file!`, `fs::read_file`, `fs::open`, `fs::read_fd`, `fs::pipe`, `fs::close`, `fs::write_new_file`, `fs::create_dir` |
+| `args.lo`       | `Args::load()`, `args.argc`, `args.get(i)`, `args.free()`                                                                     |
+| `wasi.lo`       | WASI preview 1 imports and types                                                                                              |
+| `int_parser.lo` | `parse_u32`, `parse_u32_hex`                                                                                                  |
+| `str_cutter.lo` | `StrCutter`, which splits a `str` piece by piece                                                                              |
+| `debug.lo`      | `debug_u32::log`, host logging provided by `utils.ts`                                                                         |
+| `wasm4.lo`      | [WASM-4](https://wasm4.org) bindings, see the [demos](../test/demos/wasm4/)                                                   |
 
 `fs.lo` expects the host to preopen the working directory as file descriptor 3, which `wasmtime --dir=.` does.
 
