@@ -761,7 +761,7 @@ The standard library lives in [lib](../lib/). WASI programs usually include just
 | `wasi.lo`       | WASI preview 1 imports and types                                                                                              |
 | `int_parser.lo` | `parse_u32`, `parse_u32_hex`                                                                                                  |
 | `str_cutter.lo` | `StrCutter`, which splits a `str` piece by piece                                                                              |
-| `debug.lo`      | `debug_u32::log`, host logging provided by `utils.ts`                                                                         |
+| `debug.lo`      | `debug_u32::log`, host logging provided by `utils.js`                                                                         |
 | `wasm4.lo`      | [WASM-4](https://wasm4.org) bindings, see the [demos](../test/demos/wasm4/)                                                   |
 
 `fs.lo` expects the host to preopen the working directory as file descriptor 3, which `wasmtime --dir=.` does.
@@ -923,7 +923,7 @@ Prints every file of the program, formatted, each under a `//// file: <path>` he
 | `test/`             | test programs, with diagnostics checks in `compile-errors/` and larger programs in `demos/` |
 | `initial-compiler/` | the bootstrap compiler, written in Rust                                                     |
 | `lo.wasm`           | the compiler binary, built from `src/`                                                      |
-| `utils.ts`          | build, test and run helper for Node.js 24+ or Deno                                          |
+| `utils.js`          | build, test and run helper for Node.js 24+ or Deno                                          |
 | `vscode-ext/`       | the VS Code extension                                                                       |
 
 ### Building
@@ -931,8 +931,8 @@ Prints every file of the program, formatted, each under a `//// file: <path>` he
 The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a new `lo.wasm`.
 
 ```bash
-./utils.ts build      # rebuild lo.wasm
-./utils.ts build test # rebuild, then run the tests
+./utils.js build      # rebuild lo.wasm
+./utils.js build test # rebuild, then run the tests
 ```
 
 ### Bootstrap compiler
@@ -945,21 +945,21 @@ The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a
 ### Running tests
 
 ```bash
-./utils.ts test            # all tests
-./utils.ts test --fast     # skip the comparison with the bootstrap compiler
-./utils.ts test --skip-fmt # skip the formatter tests
+./utils.js test            # all tests
+./utils.js test --fast     # skip the comparison with the bootstrap compiler
+./utils.js test --skip-fmt # skip the formatter tests
 ```
 
-- Tests are defined in `utils.ts`. They compile the programs in `test/`, run them, and check results, output and diagnostics.
+- Tests are defined in `utils.js`. They compile the programs in `test/`, run them, and check results, output and diagnostics.
 - Formatter tests format every `.lo` file outside `docs/` and compare the result to the file. They also write the result back, so `git diff` shows what changed.
 
 ### Other commands
 
 ```bash
-./utils.ts compile main.lo > main.wasm # any lo.wasm command
-./utils.ts run main.lo -- arg1 arg2    # compile and run a program
-./utils.ts runWasi main.wasm arg1      # run a compiled WASI program
-./utils.ts debugWasi main.wasm         # serve it at http://localhost:6969 for browser DevTools
+./utils.js compile main.lo > main.wasm # any lo.wasm command
+./utils.js run main.lo -- arg1 arg2    # compile and run a program
+./utils.js runWasi main.wasm arg1      # run a compiled WASI program
+./utils.js debugWasi main.wasm         # serve it at http://localhost:6969 for browser DevTools
 ```
 
 ## 🐛 Known issues
