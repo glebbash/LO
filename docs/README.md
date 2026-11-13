@@ -4,7 +4,7 @@
 
 <br/>
 
-If you'd just rather read learn from examples:
+If you'd just rather learn from examples:
 
 - [test](../test/) - small test/showcase programs for all of the language features
 - [lib](../lib/) - standard library
