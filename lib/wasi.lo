@@ -4,6 +4,7 @@ inline let wasi::Err::SUCCESS = 0
 inline let wasi::Err::AGAIN = 6
 inline let wasi::Err::BADF = 8
 inline let wasi::Err::EXIST = 20
+inline let wasi::Err::NOENT = 44
 inline let wasi::FD_STDIN = 0
 inline let wasi::FD_STDOUT = 1
 inline let wasi::FD_STDERR = 2

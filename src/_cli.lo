@@ -28,10 +28,26 @@ export fn _start() {
     let args = Args::load()
     defer args.free()
 
+    let registry = Registry::new()
+    defer registry.free()
+
+    add_embedded_folder!(registry, ASSETS_SRC, "src")
+    add_embedded_folder!(registry, ASSETS_LIB, "lib")
+    add_embedded_folder!(registry, ASSETS_TEST, "test")
+
     if args.argc == 2 && args.get(1).equals("eject") {
-        eject_folder!(ASSETS_SRC, "src")
-        eject_folder!(ASSETS_LIB, "lib")
-        eject_folder!(ASSETS_TEST, "test")
+        for file in registry.embedded_files.iter!() {
+            let file_path = file.path.skip_chars(Registry::EMBEDDED_PREFIX.len)
+
+            fs::write_new_file(file_path, file.content.iter!()) catch err {
+                eprint("Error writing file '")
+                eprint(file_path)
+                eprint("': code ")
+                eprint(err.to_tmp_str!())
+                eprint("\n")
+                wasi::proc_exit(1)
+            }
+        }
         return
     }
 
@@ -45,9 +61,6 @@ export fn _start() {
     if file_name.equals("-i") {
         file_name = "<stdin>"
     }
-
-    let registry = Registry::new()
-    defer registry.free()
 
     if command.equals("format") {
         registry.in_single_file_mode = true
@@ -125,19 +138,8 @@ export fn _start() {
     wasi::proc_exit(1)
 }
 
-inline fn eject_folder!(files: infer(T), dir_name: str) {
+inline fn add_embedded_folder!(registry: &Registry, files: infer(T), dir_name: str) {
     for file in files {
-        let file_path = String::new(dir_name.len + 1 + file.name.len)
-        do file_path.push_str(it) with (dir_name, "/", file.name)
-        defer file_path.free()
-
-        fs::write_new_file(file_path.as_str(), file.content) catch err {
-            eprint("Error writing file '")
-            eprint(file_path.as_str())
-            eprint("': code ")
-            eprint(err.to_tmp_str!())
-            eprint("\n")
-            wasi::proc_exit(1)
-        }
+        registry.add_embedded_file(dir_name, file.name, file.content as str)
     }
 }

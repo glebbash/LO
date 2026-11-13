@@ -1,0 +1,9 @@
+// `lo:` includes read from the sources embedded in the compiler, their own
+// relative includes (ie `./std.lo` in `lo:lib/str_cutter.lo`) stay in the embedded set
+
+@include("lo:lib/str_cutter.lo")
+
+export fn main(): u32 {
+    let s = String::from_str("embedded")
+    return s.as_str().len
+}

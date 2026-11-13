@@ -719,6 +719,7 @@ fn main() {
 - A file is included once, however many times and through whichever relative paths it's referenced, so there's no need for include guards like in C.
 - `with_extern` re-exports an include: files that include this one see its definitions too. `lib/cli.lo` uses it so that including `cli.lo` alone provides `std.lo`, `wasi.lo` and `print.lo`.
 - `alias = "name"` prefixes every included definition with `name::`. Method calls don't apply the prefix, so methods of `math::Point` are called as `math::Point::method(p)`.
+- Paths starting with `lo:` include a file from the sources embedded in the compiler: `lo:lib/<file>`, `lo:src/<file>` and `lo:test/<file>`, ie `@include("lo:lib/cli.lo")`. Relative includes inside such files resolve within the embedded set too, so no files need to exist on disk.
 - Defining a name that an included file already defines is an error. There is no privacy: every top-level definition is visible to includers.
 
 ## 🧰 Intrinsics

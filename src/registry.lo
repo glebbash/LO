@@ -144,6 +144,11 @@ type ModuleInclude = struct {
     with_extern: bool,
 }
 
+type EmbeddedFile = struct {
+    path: str, // full path, including the `lo:` prefix
+    content: str,
+}
+
 type MemoryInfo = struct {
     min_pages: &?u32,
     data_start: &?u32,
@@ -206,6 +211,9 @@ type Registry = struct {
     modules: &Vec(&Module),
     module_import_order: &Vec(ModuleId),
 
+    // sources that can be included with `@include("lo:<path>")`, filled by the embedder
+    embedded_files: &Vec(EmbeddedFile),
+
     expr_id_count: u32,
     expr_info: &Vec(ExprInfo), // indexed by `ExprId`
 
@@ -245,6 +253,7 @@ fn Registry::new(): &Registry {
         reporter: Reporter::new(self),
         modules: Vec::new!<&Module>(),
         module_import_order: Vec::new!<ModuleId>(),
+        embedded_files: Vec::new!<EmbeddedFile>(),
         expr_id_count: 0,
         expr_info: Vec::new!<ExprInfo>(),
         types: Vec::new!<Type>(),
@@ -287,6 +296,7 @@ fn Registry::new(): &Registry {
 
 fn Registry::free(&self) {
     self.modules.free_deep!()
+    self.embedded_files.free()
     self.error_arena.free()
     heap::free(self)
 }
@@ -310,7 +320,7 @@ fn Registry::include(
 
     let module_id = self.modules.len
 
-    let _source = Registry::read_file(absolute_path.as_str()) catch err {
+    let _source = self.read_file(absolute_path.as_str()) catch err {
         let message = String::new_in(self.error_arena, 64)
         do message.push_str(it) with (
             "Can't read file '", \\ absolute_path.as_str(), \\ "', error code = ",
@@ -389,7 +399,29 @@ fn Registry::include(
     return Ok(module_id)
 }
 
-fn Registry::read_file(file_path: str): Result(String, wasi::Err) {
+inline let Registry::EMBEDDED_PREFIX = "lo:"
+
+fn Registry::add_embedded_file(&self, dir_name: str, name: str, content: str) {
+    let path = String::new(Registry::EMBEDDED_PREFIX.len + dir_name.len + 1 + name.len)
+    do path.push_str(it) with (Registry::EMBEDDED_PREFIX, dir_name, "/", name)
+
+    self.embedded_files.push!(EmbeddedFile {
+        path: path.as_str(),
+        content: content,
+    })
+}
+
+fn Registry::read_file(&self, file_path: str): Result(String, wasi::Err) {
+    if file_path.starts_with(Registry::EMBEDDED_PREFIX) {
+        for file in self.embedded_files.iter!() {
+            if file.path.equals(file_path) {
+                return Ok(String::from_str(file.content))
+            }
+        }
+
+        return Err(wasi::Err::NOENT)
+    }
+
     if file_path.equals("<stdin>") {
         let bytes = fs::read_fd(wasi::FD_STDIN)?
         return Ok(String::from_chars(bytes))
@@ -427,9 +459,15 @@ fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
         return String::from_str(file_path)
     }
 
-    let relative_to = self.modules.get!(loc.module_id).absolute_path
+    let relative_to = self.modules.get!(loc.module_id).absolute_path.as_str()
 
-    let path_items = relative_to.as_str().split('/', Vec::new!<str>())
+    // files included from the embedded sources stay in the embedded namespace
+    let is_embedded = relative_to.starts_with(Registry::EMBEDDED_PREFIX)
+    if is_embedded {
+        relative_to = relative_to.skip_chars(Registry::EMBEDDED_PREFIX.len)
+    }
+
+    let path_items = relative_to.split('/', Vec::new!<str>())
     defer path_items.free()
 
     path_items.pop() // remove `relative_to`'s filename
@@ -454,6 +492,15 @@ fn Registry::resolve_path(&self, file_path: str, loc: Loc): String {
         }
 
         normalized.push!(item)
+    }
+
+    if is_embedded {
+        let joined = String::join(normalized, '/')
+        defer joined.free()
+
+        let prefixed = String::new(Registry::EMBEDDED_PREFIX.len + joined.as_str().len)
+        do prefixed.push_str(it) with (Registry::EMBEDDED_PREFIX, joined.as_str())
+        return prefixed
     }
 
     return String::join(normalized, '/')

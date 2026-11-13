@@ -105,6 +105,14 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
         assert.strictEqual(program.main(), 120);
     });
 
+    it("compiles include-embedded.lo", async () => {
+        const output = await compile("./test/include-embedded.lo");
+
+        const program = await loadWasm(output);
+
+        assert.strictEqual(program.main(), 8);
+    });
+
     it("compiles else-if.lo", async () => {
         const output = await compile("./test/else-if.lo");
 
@@ -731,6 +739,22 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
                     ERROR: test/compile-errors/forbid-memory.lo:23:7 - Memory operations forbidden, see test/compile-errors/forbid-memory.lo:1:2
                     ERROR: test/compile-errors/forbid-memory.lo:23:5 - Memory operations forbidden, see test/compile-errors/forbid-memory.lo:1:2
                     ERROR: test/compile-errors/forbid-memory.lo:29:14 - Memory operations forbidden, see test/compile-errors/forbid-memory.lo:1:2
+
+                    `,
+                );
+            }
+        });
+
+        it("reports missing embedded file in include-embedded-missing.lo", async () => {
+            try {
+                await compile(
+                    "./test/compile-errors/include-embedded-missing.lo",
+                );
+            } catch (err) {
+                assert.strictEqual(
+                    /** @type {Error} */ (err).message,
+                    m`
+                    ERROR: test/compile-errors/include-embedded-missing.lo:1:10 - Can't read file 'lo:lib/no-such-file.lo', error code = 44
 
                     `,
                 );
