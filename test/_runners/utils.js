@@ -4,8 +4,9 @@
 //   and a custom WASI preview1 implementation with support for virtual (in-memory)
 //   file descriptors, used to feed stdin and capture stdout/stderr.
 
-/** @param {Uint8Array} compilerWasmBinary */
-export async function loadLoCompiler(compilerWasmBinary) {
+export async function loadLoCompiler(
+    /** @type {Uint8Array} */ compilerWasmBinary,
+) {
     const mod = await WebAssembly.compile(
         /** @type {Uint8Array<ArrayBuffer>} */ (compilerWasmBinary),
     );
@@ -59,21 +60,19 @@ export async function loadLoCompiler(compilerWasmBinary) {
     };
 }
 
-/**
- * @param {Uint8Array<ArrayBuffer>} data
- * @param {WebAssembly.Imports} [imports]
- */
-export async function loadWasm(data, imports) {
+export async function loadWasm(
+    /** @type {Uint8Array<ArrayBuffer>} */ data,
+    /** @type {WebAssembly.Imports | undefined} */ imports = undefined,
+) {
     const mod = await WebAssembly.instantiate(data, imports);
     return /** @type {any} */ (mod.instance.exports);
 }
 
-/**
- * @param {Uint8Array} data
- * @param {Omit<WASIOptions, "version" | "sysCalls">} [wasiOptions]
- * @param {Record<string, unknown>} [additionalImports]
- */
-export async function runWASI(data, wasiOptions, additionalImports = {}) {
+export async function runWASI(
+    /** @type {Uint8Array} */ data,
+    /** @type {Omit<WASIOptions, "version" | "sysCalls"> | undefined} */ wasiOptions = undefined,
+    /** @type {Record<string, unknown>} */ additionalImports = {},
+) {
     const wasi = new WASI({
         version: "preview1",
         sysCalls: await WASI.NodeSysCalls(),
@@ -175,12 +174,11 @@ class SysFD {
     /** @type {WASISysCalls} */
     sysCalls;
 
-    /**
-     * @param {number | null} sysFileFd
-     * @param {string} sysDirName
-     * @param {WASISysCalls} sysCalls
-     */
-    constructor(sysFileFd, sysDirName, sysCalls) {
+    constructor(
+        /** @type {number | null} */ sysFileFd,
+        /** @type {string} */ sysDirName,
+        /** @type {WASISysCalls} */ sysCalls,
+    ) {
         this.sysFileFd = sysFileFd;
         this.sysDirName = sysDirName;
         this.sysCalls = sysCalls;
@@ -190,11 +188,10 @@ class SysFD {
         return this.sysDirName;
     }
 
-    /**
-     * @param {string} fileName
-     * @param {"r" | "w" | "wx"} mode
-     */
-    openChild(fileName, mode) {
+    openChild(
+        /** @type {string} */ fileName,
+        /** @type {"r" | "w" | "wx"} */ mode,
+    ) {
         const fullPath = `${this.sysDirName}/${fileName}`;
         try {
             const sysFd = this.sysCalls.pathOpen(fullPath, mode);
@@ -209,8 +206,7 @@ class SysFD {
         }
     }
 
-    /** @param {string} dirName */
-    createChildDir(dirName) {
+    createChildDir(/** @type {string} */ dirName) {
         const fullPath = `${this.sysDirName}/${dirName}`;
         try {
             this.sysCalls.mkdir(fullPath);
@@ -234,8 +230,7 @@ class SysFD {
         }
     }
 
-    /** @param {Uint8Array} buffer */
-    read(buffer) {
+    read(/** @type {Uint8Array} */ buffer) {
         if (this.sysFileFd === null) {
             return { code: WASI_ERRNO_INVAL, nread: 0 };
         }
@@ -248,8 +243,7 @@ class SysFD {
         }
     }
 
-    /** @param {Uint8Array} buffer */
-    write(buffer) {
+    write(/** @type {Uint8Array} */ buffer) {
         if (this.sysFileFd === null) {
             return { code: WASI_ERRNO_INVAL, nwritten: 0 };
         }
@@ -291,8 +285,7 @@ class VirtualFD {
         this.writes = [];
     }
 
-    /** @param {Uint8Array} buffer */
-    read(buffer) {
+    read(/** @type {Uint8Array} */ buffer) {
         if (this.readCursor >= this.contents.length - 1) {
             return { code: WASI_ERRNO_SUCCESS, nread: 0 };
         }
@@ -313,8 +306,7 @@ class VirtualFD {
         return { code: WASI_ERRNO_SUCCESS, nread: bytesRead };
     }
 
-    /** @param {Uint8Array} buffer */
-    write(buffer) {
+    write(/** @type {Uint8Array} */ buffer) {
         this.writes.push(buffer.slice());
         return { code: WASI_ERRNO_SUCCESS, nwritten: buffer.length };
     }
@@ -393,8 +385,7 @@ export class WASI {
     /** @type {number} */
     preopenCount;
 
-    /** @param {WASIOptions} options */
-    constructor(options) {
+    constructor(/** @type {WASIOptions} */ options) {
         this.options = options;
         this.args = this.options.args ?? [];
         this.nextFd = 3;
@@ -470,10 +461,9 @@ export class WASI {
     }
 
     /**
-     * @param {WebAssembly.Instance} instance
      * @returns {number}
      */
-    start(instance) {
+    start(/** @type {WebAssembly.Instance} */ instance) {
         this.memory = /** @type {WebAssembly.Memory} */ (
             instance.exports.memory
         );
@@ -945,8 +935,7 @@ class ProcExitError extends Error {
     /** @type {number} */
     exitCode;
 
-    /** @param {number} exitCode */
-    constructor(exitCode) {
+    constructor(/** @type {number} */ exitCode) {
         super();
         this.exitCode = exitCode;
     }

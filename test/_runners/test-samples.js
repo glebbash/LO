@@ -15,7 +15,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const args = process.argv.slice(2);
     const compilerPath = args.find((a) => !a.startsWith("--"));
     if (compilerPath === undefined) {
-        console.error("Usage: node compiler-tests.js <lo.wasm> [--skip-fmt]");
+        console.error("Usage: node test-samples.js <lo.wasm> [--skip-fmt]");
         process.exit(1);
     }
 
@@ -23,18 +23,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
     process.chdir(path.join(import.meta.dirname, "../.."));
 
-    await runCompilerTests(absCompilerPath, {
+    await runSampleTests(absCompilerPath, {
         skipFmt: args.includes("--skip-fmt"),
     });
 }
 
-/**
- * Registers the test suite for the compiler binary at `compilerPath`.
- * Expects the current directory to be the project root.
- * @param {string} compilerPath
- * @param {{ skipFmt?: boolean }} [options]
- */
-export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
+export async function runSampleTests(
+    /** @type {string} */ compilerPath,
+    /** @type {{ skipFmt?: boolean }} */ { skipFmt = false } = {},
+) {
     const lo = await loadLoCompiler(await fs.readFile(compilerPath));
     const compile = (/** @type {string} */ fileName) =>
         lo(["compile", fileName]);
@@ -316,12 +313,11 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
         assert.strictEqual(lib.vec_get_u8(vec, 6), 7);
         assert.strictEqual(lib.vec_len(vec), 7);
 
-        /**
-         * @param {WebAssembly.Memory} memory
-         * @param {number} ptr
-         * @param {Uint8Array} data
-         */
-        function storeData(memory, ptr, data) {
+        function storeData(
+            /** @type {WebAssembly.Memory} */ memory,
+            /** @type {number} */ ptr,
+            /** @type {Uint8Array} */ data,
+        ) {
             const region = { ptr, size: data.byteLength };
 
             new Uint8Array(memory.buffer, region.ptr, region.size).set(data);
@@ -613,11 +609,10 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
             assert.strictEqual(part2, "54265\n");
         });
 
-        /**
-         * @param {(sourcePath: string) => Promise<Uint8Array<ArrayBuffer>>} compile
-         * @param {string} path
-         */
-        async function runAoc(compile, path) {
+        async function runAoc(
+            /** @type {(sourcePath: string) => Promise<Uint8Array<ArrayBuffer>>} */ compile,
+            /** @type {string} */ path,
+        ) {
             const program = await compile(path);
 
             const stdout = new WASI.VirtualFD();
@@ -1270,11 +1265,10 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
     });
 }
 
-/**
- * @param {TemplateStringsArray} strings
- * @param {...unknown} args
- */
-function m(strings, ...args) {
+function m(
+    /** @type {TemplateStringsArray} */ strings,
+    /** @type {unknown[]} */ ...args
+) {
     const INDENT_PLACEHOLDER = "```";
 
     // interpolate

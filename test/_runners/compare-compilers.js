@@ -22,13 +22,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     await compareCompilers(absA, absB);
 }
 
-/**
- * Registers the tests comparing two compiler binaries.
- * Expects the current directory to be the project root.
- * @param {string} compilerPath
- * @param {string} otherCompilerPath
- */
-export async function compareCompilers(compilerPath, otherCompilerPath) {
+export async function compareCompilers(
+    /** @type {string} */ compilerPath,
+    /** @type {string} */ otherCompilerPath,
+) {
     const lo = await loadLoCompiler(await fs.readFile(compilerPath));
     const loOther = await loadLoCompiler(await fs.readFile(otherCompilerPath));
 
@@ -148,12 +145,10 @@ export async function compareCompilers(compilerPath, otherCompilerPath) {
     });
 
     describe("compiler errors match other compiler", () => {
-        /**
-         * @param {typeof loOther} compiler
-         * @param {string} fileName
-         * @returns {Promise<string>}
-         */
-        const outcome = async (compiler, fileName) => {
+        const compile = async (
+            /** @type {typeof lo} */ compiler,
+            /** @type {string} */ fileName,
+        ) => {
             const stderr = new WASI.VirtualFD();
 
             try {
@@ -173,8 +168,8 @@ export async function compareCompilers(compilerPath, otherCompilerPath) {
 
             it(`reports the same for ${fileName}`, async () => {
                 assert.strictEqual(
-                    await outcome(lo, fileName),
-                    await outcome(loOther, fileName),
+                    await compile(lo, fileName),
+                    await compile(loOther, fileName),
                 );
             });
         }
@@ -195,12 +190,10 @@ export async function compareCompilers(compilerPath, otherCompilerPath) {
     });
 
     describe("compiler error inspections match other compiler", () => {
-        /**
-         * @param {typeof loOther} compiler
-         * @param {string} fileName
-         * @returns {Promise<string>}
-         */
-        const inspectOutput = async (compiler, fileName) => {
+        const inspectOutput = async (
+            /** @type {typeof lo} */ compiler,
+            /** @type {string} */ fileName,
+        ) => {
             const stdout = new WASI.VirtualFD();
             try {
                 await compiler(["inspect", fileName], { stdout });

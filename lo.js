@@ -88,8 +88,8 @@ async function main(/** @type {string[]} */ argv) {
     }
 
     if (command === "test") {
-        const compilerTests = await importTestRunner("compiler-tests.js");
-        await compilerTests.runCompilerTests(COMPILER_PATH, {
+        const samples = await importTestRunner("test-samples.js");
+        await samples.runSampleTests(COMPILER_PATH, {
             skipFmt: rest.includes("--skip-fmt"),
         });
 

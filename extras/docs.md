@@ -954,7 +954,7 @@ The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a 
 ./lo.js compare-compilers a.wasm b.wasm # only compare any two compiler binaries
 ```
 
-- Tests live in `test/_runners/`: `compiler-tests.js` compiles the programs in `test/`, runs them, and checks results, output and diagnostics, `compare-compilers.js` compares two compilers.
+- Tests live in `test/_runners/`: `test-samples.js` compiles the programs in `test/`, runs them, and checks results, output and diagnostics, `compare-compilers.js` compares two compilers.
 - Formatter tests format every `.lo` file outside `extras/other/` and compare the result to the file. They also write the result back, so `git diff` shows what changed.
 
 ### Unpacking the sources
