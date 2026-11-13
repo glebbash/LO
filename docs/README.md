@@ -761,7 +761,7 @@ The standard library lives in [lib](../lib/). WASI programs usually include just
 | `wasi.lo`       | WASI preview 1 imports and types                                                                                              |
 | `int_parser.lo` | `parse_u32`, `parse_u32_hex`                                                                                                  |
 | `str_cutter.lo` | `StrCutter`, which splits a `str` piece by piece                                                                              |
-| `debug.lo`      | `debug_u32::log`, host logging provided by `utils.js`                                                                         |
+| `debug.lo`      | `debug_u32::log`, host logging provided by the test suite (`test/_runners`)                                                   |
 | `wasm4.lo`      | [WASM-4](https://wasm4.org) bindings, see the [demos](../test/demos/wasm4/)                                                   |
 
 `fs.lo` expects the host to preopen the working directory as file descriptor 3, which `wasmtime --dir=.` does.
@@ -799,6 +799,7 @@ Usage:
   lo inspect <input.lo> // emits JSON inspections
   lo format  <input.lo> // prints formatted version of the source
   lo flatten <input.lo> // prints the source with all includes inlined
+  lo eject              // unpacks bundled compiler sources and tests, never overwrites files
 ```
 
 - Passing `-i` instead of a file name reads the source from stdin. It shows up as `<stdin>` in messages.
@@ -918,26 +919,27 @@ Prints every file of the program, formatted, each under a `//// file: <path>` he
 
 | Path                | Contents                                                                                    |
 | ------------------- | ------------------------------------------------------------------------------------------- |
-| `src/`              | the compiler, written in LO, with `src/0-cli.lo` as the entry point                         |
+| `src/`              | the compiler, written in LO, with `src/_cli.lo` as the entry point                          |
 | `lib/`              | the standard library                                                                        |
 | `test/`             | test programs, with diagnostics checks in `compile-errors/` and larger programs in `demos/` |
 | `initial-compiler/` | the bootstrap compiler, written in Rust                                                     |
-| `lo.wasm`           | the compiler binary, built from `src/`                                                      |
-| `utils.js`          | build, test and run helper for Node.js 24+ or Deno                                          |
+| `test/_runners/`    | compiler test suite and custom WASI implementation to speed thing up                        |
+| `lo.wasm`           | the compiler binary, built from `src/`, it has `src/`, `lib/` and `test/` baked in          |
+| `lo.js`             | build, test and run helper for Node.js 24+                                                  |
 | `vscode-ext/`       | the VS Code extension                                                                       |
 
 ### Building
 
-The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a new `lo.wasm`.
+The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a new `lo.wasm`. The binary embeds its own sources, libraries and tests, so any `lo.wasm` can be unpacked and rebuilt (the result is byte-identical for an unmodified checkout).
 
 ```bash
-./utils.js build      # rebuild lo.wasm
-./utils.js build test # rebuild, then run the tests
+./lo.js build      # rebuild lo.wasm
+./lo.js build test # rebuild, then run the tests
 ```
 
 ### Bootstrap compiler
 
-`initial-compiler/` holds the original Rust implementation. The test suite checks that both compilers produce the same binaries and diagnostics.
+`initial-compiler/` holds the original Rust implementation. `./lo.js test` checks that both compilers produce the same binaries and diagnostics. The compiler itself is compared through `test/lo-cli-slim.lo`, a copy of `src/_cli.lo` without the baked in sources, as the Rust compiler doesn't support `@embed_files`.
 
 - Install [rustup](https://www.rust-lang.org/tools/install). The nightly toolchain and the `wasm32-unknown-unknown` target are pinned in `initial-compiler/rust-toolchain.toml`. There's also a DevContainer setup in `initial-compiler/.devcontainer`.
 - Run `cd initial-compiler && ./build.sh`, which writes `initial-compiler/lo.wasm`.
@@ -945,21 +947,31 @@ The compiler builds itself: the current `lo.wasm` compiles `src/0-cli.lo` into a
 ### Running tests
 
 ```bash
-./utils.js test            # all tests
-./utils.js test --fast     # skip the comparison with the bootstrap compiler
-./utils.js test --skip-fmt # skip the formatter tests
+./lo.js test            # all tests, including the comparison with the bootstrap compiler
+./lo.js test --fast     # skip the comparison with the bootstrap compiler
+./lo.js test --skip-fmt # skip the formatter tests
+./lo.js compare-compilers a.wasm b.wasm # only compare any two compiler binaries
 ```
 
-- Tests are defined in `utils.js`. They compile the programs in `test/`, run them, and check results, output and diagnostics.
+- Tests live in `test/_runners/`: `compiler-tests.js` compiles the programs in `test/`, runs them, and checks results, output and diagnostics, `compare-compilers.js` compares two compilers.
 - Formatter tests format every `.lo` file outside `docs/` and compare the result to the file. They also write the result back, so `git diff` shows what changed.
+
+### Unpacking the sources
+
+`lo.wasm` contains the sources, the standard library and the tests. To get them without cloning the repository:
+
+```bash
+./lo.js eject # writes src/, lib/ and test/ to the current directory, never overwrites files
+./lo.js test  # now the tests can run (they are not available before unpacking)
+```
 
 ### Other commands
 
 ```bash
-./utils.js compile main.lo > main.wasm # any lo.wasm command
-./utils.js run main.lo -- arg1 arg2    # compile and run a program
-./utils.js runWasi main.wasm arg1      # run a compiled WASI program
-./utils.js debugWasi main.wasm         # serve it at http://localhost:6969 for browser DevTools
+./lo.js compile main.lo > main.wasm # any lo.wasm command
+./lo.js run main.lo -- arg1 arg2    # compile and run a program
+./lo.js runWasi main.wasm arg1      # run a compiled WASI program
+./lo.js debugWasi main.wasm         # serve it at http://localhost:6969 for browser DevTools
 ```
 
 ## 🐛 Known issues
