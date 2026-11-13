@@ -837,7 +837,7 @@ The output is a WebAssembly 1.0 module plus two features standardized in WebAsse
 lo inspect main.lo
 ```
 
-Prints a JSON array that describes the program, for editor integrations. The [VS Code extension](../vscode-ext/src/extension.ts) uses it for hovers, go to definition and diagnostics.
+Prints a JSON array that describes the program, for editor integrations. The [VS Code extension](./vscode-ext/src/extension.ts) uses it for hovers, go to definition and diagnostics.
 
 > [!NOTE]
 > The format isn't stable. JSON is simply the easiest to consume for now, and a leaner format, possibly binary, is planned.
@@ -917,16 +917,16 @@ Prints every file of the program, formatted, each under a `//// file: <path>` he
 
 ## 🧪 Compiler development
 
-| Path                | Contents                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------- |
-| `src/`              | the compiler, written in LO, with `src/_cli.lo` as the entry point                          |
-| `lib/`              | the standard library                                                                        |
-| `test/`             | test programs, with diagnostics checks in `compile-errors/` and larger programs in `demos/` |
-| `initial-compiler/` | the bootstrap compiler, written in Rust                                                     |
-| `test/_runners/`    | compiler test suite and custom WASI implementation to speed thing up                        |
-| `lo.wasm`           | the compiler binary, built from `src/`, it has `src/`, `lib/` and `test/` baked in          |
-| `lo.js`             | build, test and run helper for Node.js 24+                                                  |
-| `vscode-ext/`       | the VS Code extension                                                                       |
+| Path                       | Contents                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------- |
+| `src/`                     | the compiler, written in LO, with `src/_cli.lo` as the entry point                          |
+| `lib/`                     | the standard library                                                                        |
+| `test/`                    | test programs, with diagnostics checks in `compile-errors/` and larger programs in `demos/` |
+| `extras/initial-compiler/` | the bootstrap compiler, written in Rust                                                     |
+| `test/_runners/`           | compiler test suite and custom WASI implementation to speed thing up                        |
+| `lo.wasm`                  | the compiler binary, built from `src/`, it has `src/`, `lib/` and `test/` baked in          |
+| `lo.js`                    | build, test and run helper for Node.js 24+                                                  |
+| `extras/vscode-ext/`       | the VS Code extension                                                                       |
 
 ### Building
 
@@ -939,10 +939,10 @@ The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a 
 
 ### Bootstrap compiler
 
-`initial-compiler/` holds the original Rust implementation. `./lo.js test` checks that both compilers produce the same binaries and diagnostics. The compiler itself is compared through `test/lo-cli-slim.lo`, a copy of `src/_cli.lo` without the baked in sources, as the Rust compiler doesn't support `@embed_files`.
+`extras/initial-compiler/` holds the original Rust implementation. `./lo.js test` checks that both compilers produce the same binaries and diagnostics. The compiler itself is compared through `test/lo-cli-slim.lo`, a copy of `src/_cli.lo` without the baked in sources, as the Rust compiler doesn't support `@embed_files`.
 
-- Install [rustup](https://www.rust-lang.org/tools/install). The nightly toolchain and the `wasm32-unknown-unknown` target are pinned in `initial-compiler/rust-toolchain.toml`. There's also a DevContainer setup in `initial-compiler/.devcontainer`.
-- Run `cd initial-compiler && ./build.sh`, which writes `initial-compiler/lo.wasm`.
+- Install [rustup](https://www.rust-lang.org/tools/install). The nightly toolchain and the `wasm32-unknown-unknown` target are pinned in `extras/initial-compiler/rust-toolchain.toml`. There's also a DevContainer setup in `extras/initial-compiler/.devcontainer`.
+- Run `cd extras/initial-compiler && ./build.sh`, which writes `extras/initial-compiler/lo.wasm`.
 
 ### Running tests
 
@@ -954,7 +954,7 @@ The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a 
 ```
 
 - Tests live in `test/_runners/`: `compiler-tests.js` compiles the programs in `test/`, runs them, and checks results, output and diagnostics, `compare-compilers.js` compares two compilers.
-- Formatter tests format every `.lo` file outside `docs/` and compare the result to the file. They also write the result back, so `git diff` shows what changed.
+- Formatter tests format every `.lo` file outside `extras/other/` and compare the result to the file. They also write the result back, so `git diff` shows what changed.
 
 ### Unpacking the sources
 

@@ -1219,7 +1219,7 @@ export async function runCompilerTests(compilerPath, { skipFmt = false } = {}) {
 
     const formattedFiles = await fs
         .readdir(".", { recursive: true })
-        .then((files) => files.filter((f) => !f.startsWith("docs")))
+        .then((files) => files.filter((f) => !f.startsWith("extras/other")))
         .then((files) => files.filter((f) => f.endsWith(".lo")));
 
     describe("formatter", () => {

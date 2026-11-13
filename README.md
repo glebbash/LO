@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./vscode-ext/assets/icons/lo.svg" />
+  <img src="./extras/vscode-ext/assets/icons/lo.svg" />
 </p>
 
 LO - small programming language targeting WASM that aims to be as simple as possible
@@ -26,7 +26,7 @@ LO - small programming language targeting WASM that aims to be as simple as poss
 
 The journey is documented in the [LO DevLog](https://blog.glebbash.dev/?tag=lo).
 
-And the actual docs for the compiler are in the [docs](./docs/README.md) folder.
+And the actual docs for the compiler are in the [docs](./extras/docs.md).
 
 ## 👀 Examples
 
@@ -36,15 +36,15 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 - Hello world [(source)](test/demos/hello-world.lo):
 
-![Hello World sample](./docs/assets/hello-world.png)
+![Hello World sample](./extras/assets/hello-world.png)
 
 - Advent of Code 2020 Day 1 [(source)](test/demos/aoc2020/1.lo):
 
-![AOC 2020 sample](./docs/assets/aoc-2020-day1.png)
+![AOC 2020 sample](./extras/assets/aoc-2020-day1.png)
 
-- Dark Maze (WASM-4 demo game) [play it here](https://raw.githack.com/glebbash/LO/main/docs/assets/dark-maze.html) or check the [source](test/demos/wasm4/src/dark-maze.lo):
+- Dark Maze (WASM-4 demo game) [play it here](https://raw.githack.com/glebbash/LO/main/extras/assets/dark-maze.html) or check the [source](test/demos/wasm4/src/dark-maze.lo):
 
-![Dark Maze gif](./docs/assets/dark-maze.gif)
+![Dark Maze gif](./extras/assets/dark-maze.gif)
 
 ## 🚀 Getting started
 
@@ -77,7 +77,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 ---
 
-> Additional info on compiler usage is in the [docs](./docs/README.md)
+> Additional info on compiler usage is in the [docs](./extras/docs.md)
 
 ## 🔦 VSCode extension
 
@@ -86,8 +86,8 @@ Available on:
 - [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=glebbash.lo)
 - [Open VSX Registry](https://open-vsx.org/extension/glebbash/lo)
 
-> See [Inspection](./docs/README.md#inspecting) if you are interested in intergrating with other IDEs
+> See [Inspection](./extras/docs.md#inspecting) if you are interested in intergrating with other IDEs
 
 ## ❔ More info
 
-More info including building initial compiler and running tests is available in the [docs](./docs/README.md)
+More info including building initial compiler and running tests is available in the [docs](./extras/docs.md)

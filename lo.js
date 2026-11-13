@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 import { WASI } from "node:wasi";
 
 const COMPILER_PATH = path.join(import.meta.dirname, "lo.wasm");
-const INITIAL_COMPILER_PATH = "initial-compiler/lo.wasm";
+const INITIAL_COMPILER_PATH = "extras/initial-compiler/lo.wasm";
 const COMPILER_DOWNLOAD_URL =
     "https://github.com/glebbash/LO/releases/latest/download/lo.wasm";
 
