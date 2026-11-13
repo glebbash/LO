@@ -9,7 +9,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { WASI, loadLoCompiler, loadWasm, runWASI } from "./utils.js";
+import {
+    WASI,
+    createWASI,
+    loadLoCompiler,
+    loadWasm,
+    runWASI,
+} from "./utils.js";
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const args = process.argv.slice(2);
@@ -252,10 +258,7 @@ export async function runSampleTests(
     it("compiles wasi.lo", async () => {
         const output = await compile("./lib/wasi.lo");
 
-        const wasi = new WASI({
-            version: "preview1",
-            sysCalls: await WASI.NodeSysCalls(),
-        });
+        const wasi = await createWASI({});
         const wasm = await WebAssembly.compile(output);
         await WebAssembly.instantiate(wasm, wasi.getImportObject());
     });

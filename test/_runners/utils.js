@@ -1,8 +1,23 @@
 // @ts-check
 
-// Helpers for the test runners: loading and running compiler and program binaries,
-//   and a custom WASI preview1 implementation with support for virtual (in-memory)
-//   file descriptors, used to feed stdin and capture stdout/stderr.
+// The custom WASI shim below runs the tests about 30% faster than `node:wasi`
+//   because it supports virtual files natively but only handles a small WASI p1 subset.
+// Enable this flag to use full featured `node:wasi` with temp files instead of virtual ones.
+const USE_NODE_WASI = false;
+
+export async function createWASI(
+    /** @type {Omit<WASIOptions, "version" | "sysCalls">} */ options,
+) {
+    if (USE_NODE_WASI) {
+        return createNodeWASI(options);
+    }
+
+    return new WASI({
+        version: "preview1",
+        sysCalls: await WASI.NodeSysCalls(),
+        ...options,
+    });
+}
 
 export async function loadLoCompiler(
     /** @type {Uint8Array} */ compilerWasmBinary,
@@ -19,14 +34,12 @@ export async function loadLoCompiler(
             stderr = new WASI.VirtualFD(),
         } = {},
     ) => {
-        const wasi = new WASI({
-            version: "preview1",
+        const wasi = await createWASI({
             stdin,
             stdout,
             stderr,
             args: ["lo", ...args],
             preopens: { ".": "." },
-            sysCalls: await WASI.NodeSysCalls(),
         });
 
         const instance = await WebAssembly.instantiate(mod, {
@@ -60,24 +73,12 @@ export async function loadLoCompiler(
     };
 }
 
-export async function loadWasm(
-    /** @type {Uint8Array<ArrayBuffer>} */ data,
-    /** @type {WebAssembly.Imports | undefined} */ imports = undefined,
-) {
-    const mod = await WebAssembly.instantiate(data, imports);
-    return /** @type {any} */ (mod.instance.exports);
-}
-
 export async function runWASI(
     /** @type {Uint8Array} */ data,
     /** @type {Omit<WASIOptions, "version" | "sysCalls"> | undefined} */ wasiOptions = undefined,
     /** @type {Record<string, unknown>} */ additionalImports = {},
 ) {
-    const wasi = new WASI({
-        version: "preview1",
-        sysCalls: await WASI.NodeSysCalls(),
-        ...wasiOptions,
-    });
+    const wasi = await createWASI({ ...wasiOptions });
 
     const wasm = await WebAssembly.compile(
         /** @type {Uint8Array<ArrayBuffer>} */ (data),
@@ -107,6 +108,81 @@ export async function runWASI(
         }
         throw err;
     }
+}
+
+export async function loadWasm(
+    /** @type {Uint8Array<ArrayBuffer>} */ data,
+    /** @type {WebAssembly.Imports | undefined} */ imports = undefined,
+) {
+    const mod = await WebAssembly.instantiate(data, imports);
+    return /** @type {any} */ (mod.instance.exports);
+}
+
+// node:wasi adapter
+
+/**
+ * `node:wasi` instance that also accepts `VirtualFD` stdio, which is bridged
+ * through temp files: stdin contents are written before the run, stdout and
+ * stderr are copied back after it.
+ */
+async function createNodeWASI(
+    /** @type {Omit<WASIOptions, "version" | "sysCalls">} */ options,
+) {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { WASI: NodeWASI } = await import("node:wasi");
+
+    // created on first use, as WASI instances don't have to be started
+    /** @type {string | undefined} */
+    let tmpDir;
+    /** @type {Array<() => void>} */
+    const afterRun = [];
+
+    const stdio = (
+        /** @type {number | FD | undefined} */ value,
+        /** @type {"stdin" | "stdout" | "stderr"} */ name,
+        /** @type {number} */ defaultFd,
+    ) => {
+        if (typeof value !== "object") return value ?? defaultFd;
+
+        tmpDir ??= fs.mkdtempSync(path.join(os.tmpdir(), "lo-wasi-"));
+        const file = path.join(tmpDir, name);
+        const virtualFd = /** @type {VirtualFD} */ (value);
+        if (name === "stdin") {
+            fs.writeFileSync(file, virtualFd.flushAndRead());
+        }
+
+        const fd = fs.openSync(file, name === "stdin" ? "r" : "w");
+        afterRun.push(() => {
+            fs.closeSync(fd);
+            if (name !== "stdin") virtualFd.write(fs.readFileSync(file));
+        });
+        return fd;
+    };
+
+    const wasi = new NodeWASI({
+        version: "preview1",
+        args: options.args,
+        env: options.env,
+        preopens: options.preopens,
+        returnOnExit: options.returnOnExit ?? true,
+        stdin: stdio(options.stdin, "stdin", 0),
+        stdout: stdio(options.stdout, "stdout", 1),
+        stderr: stdio(options.stderr, "stderr", 2),
+    });
+
+    const start = wasi.start.bind(wasi);
+    return Object.assign(wasi, {
+        start(/** @type {WebAssembly.Instance} */ instance) {
+            try {
+                return start(instance);
+            } finally {
+                afterRun.forEach((run) => run());
+                if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
+        },
+    });
 }
 
 // WASI shim
