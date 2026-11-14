@@ -27,7 +27,6 @@ create(document.body, {
         },
         extensionEnabledApiProposals: {
             "lo-playground.scratch-fs": ["fileSearchProvider", "textSearchProvider"],
-            "vscode.mermaid-markdown-features": ["chatOutputRenderer", "chatParticipantPrivate"],
         },
     },
     additionalBuiltinExtensions: cfg.extensions.map((e) => ({ ...origin, path: `/extensions/${e}` })),

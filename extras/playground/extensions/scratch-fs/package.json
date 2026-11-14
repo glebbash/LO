@@ -28,6 +28,15 @@
                 "command": "scratch.downloadZip",
                 "title": "Scratch: Download workspace as zip"
             }
+        ],
+        "resourceLabelFormatters": [
+            {
+                "scheme": "scratch",
+                "formatting": {
+                    "label": "${path}",
+                    "separator": "/"
+                }
+            }
         ]
     },
     "enabledApiProposals": [

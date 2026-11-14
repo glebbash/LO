@@ -44,6 +44,45 @@ async function download(url, file) {
     fs.writeFileSync(file, Buffer.from(await (await get(url)).arrayBuffer()));
 }
 
+/**
+ * Removes a built-in extension completely: its folder and its entry in the list of built-in extensions that is baked
+ * into the workbench bundle (`{extensionPath:"name",packageJSON:{...},...}`).
+ */
+function dropBuiltinExtension(name) {
+    fs.rmSync(path.join(DIST, "vscode/extensions", name), {
+        recursive: true,
+        force: true,
+    });
+
+    const file = path.join(
+        DIST,
+        "vscode/out/vs/workbench/workbench.web.main.internal.js",
+    );
+    const src = fs.readFileSync(file, "utf8");
+    const start = src.indexOf(`{extensionPath:${JSON.stringify(name)},`);
+    if (start < 0) throw new Error(`built-in extension ${name} not found in the workbench bundle`);
+
+    // find the end of the object literal, skipping over string literals
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < src.length; i++) {
+        const c = src[i];
+        if (c === '"' || c === "'" || c === "`") {
+            for (i++; src[i] !== c; i++) if (src[i] === "\\") i++;
+        } else if (c === "{") {
+            depth++;
+        } else if (c === "}" && --depth === 0) {
+            end = i + 1;
+            break;
+        }
+    }
+    if (end < 0) throw new Error(`end of the ${name} entry not found`);
+
+    // drop the separating comma as well
+    const [from, to] = src[start - 1] === "," ? [start - 1, end] : [start, end + 1];
+    fs.writeFileSync(file, src.slice(0, from) + src.slice(to));
+}
+
 async function build() {
     fs.rmSync(DIST, { recursive: true, force: true });
     fs.mkdirSync(DIST, { recursive: true });
@@ -90,6 +129,7 @@ async function build() {
             fs.writeFileSync(file, "exports.activate = function () {};\nexports.deactivate = function () {};\n");
         }
     }
+    dropBuiltinExtension("mermaid-markdown-features");
     // Unused bundle of the agents window, close to Cloudflare's 25 MiB file limit.
     fs.rmSync(path.join(DIST, "vscode/out/vs/sessions"), {
         recursive: true,

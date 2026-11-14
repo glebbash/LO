@@ -8,7 +8,7 @@ Most of this folder was AI generated and edited afterwards by hand where needed.
 
 ## Local
 
-Requirements: node 18+, `tar` and `unzip` on `PATH`, and network access. The build downloads the VS Code web build and `wabt` from the npm registry and extensions from `open-vsx.org`. There are no npm dependencies. Downloads are cached in `.cache/`, the output goes to `dist/` (about 160MB).
+Requirements: node 18+, `tar` and `unzip` on `PATH`, and network access. The build downloads the VS Code web build and `wabt` from the npm registry and extensions from `open-vsx.org`. There are no npm dependencies. Downloads are cached in `.cache/`, the output goes to `dist/` (about 100MB).
 
 ```sh
 npm run build
@@ -42,7 +42,7 @@ Connect the repo in the Cloudflare dashboard (Workers & Pages, Create, Pages, Co
 | Build output directory | `dist`                      |
 | Environment variable   | `NODE_VERSION=22` (any 18+) |
 
-No secrets, wrangler config or CI are needed, and `_headers` is picked up from the output directory. Cloudflare Pages allows 20000 files and 25 MiB per file. The build is at about 1800 files, and the largest files are two 24.65 MiB bundles of the Mermaid extension, so a new version of that extension can break the deploy.
+No secrets, wrangler config or CI are needed, and `_headers` is picked up from the output directory. Cloudflare Pages allows 20000 files and 25 MiB per file. The build has about 1700 files and the largest is the 17 MiB workbench bundle.
 
 ## Default profile
 
@@ -72,13 +72,15 @@ On the first start `scratch-fs` downloads `lo.wasm` from `raw.githubusercontent.
 
 **Extension gallery.** The Marketplace is only for Microsoft's products, so `productConfiguration` in `src/main.js` points the gallery at Open VSX. `product.json` is merged deeply, which is why the unused Microsoft endpoints are set to empty strings.
 
-**Built-in extensions.** The manifests of all built-in extensions are part of the workbench bundle, so deleting an extension's folder leaves it registered and VS Code logs an activation error. The build therefore replaces the code of the extensions it drops (JS/TS, HTML and CSS language servers, chat features) with a no-op stub at the entry point of the manifest. Grammars stay, so highlighting works. API proposals of built-ins come from `product.json`, `src/main.js` adds the one missing for the Mermaid extension, and the proposals for the search providers of `scratch-fs`.
+**Built-in extensions.** The manifests of all built-in extensions are part of the workbench bundle, so deleting an extension's folder leaves it registered and VS Code logs an activation error. The build handles unwanted built-ins in two ways. The JS/TS, HTML and CSS language servers and the chat features get a no-op stub at the entry point of their manifest (grammars stay, so highlighting works). The Mermaid extension (59MB of bundles) is removed completely: its folder is deleted and its entry is cut out of the list in the bundle (`dropBuiltinExtension` in `scripts.js`). The API proposals for the search providers of `scratch-fs` are added in `src/main.js`.
 
 **Cross-origin isolation.** wasm-wasi-core needs `SharedArrayBuffer`, so every response carries COOP `same-origin` and COEP `credentialless` (`public/_headers`, and the same in `scripts.js serve`). `credentialless` instead of `require-corp` lets images from servers without a `Cross-Origin-Resource-Policy` header load, like extension icons from Open VSX. Browsers without `credentialless` (Safari) are not isolated and cannot run the shell or LO.
 
 **Webviews and extension host.** The build has no `vscode-cdn.net` endpoint and static hosting has no wildcard subdomains, so webviews are served from the page's origin (`webviewEndpoint`) and the extension host iframe is same-origin as well, which is VS Code's default without `webEndpointUrlTemplate`. They are not isolated from the page by origin.
 
 **Explorer title.** The workspace folder is `scratch:/Scratch FS`. VS Code shows the last path segment, and "/" for a root folder. `scratch-fs` keeps its files below that folder.
+
+**Path separators.** VS Code formats paths in labels (Copy Path, tooltips) with the separator of the OS the browser runs on, which gives backslashes on Windows. `scratch-fs` contributes a `resourceLabelFormatters` entry for the `scratch` scheme with `/` as the separator.
 
 **Search.** Quick Open and the Search view need a file and a text search provider for the scheme, otherwise they only show recent files. `scratch-fs` implements both with the `fileSearchProvider` and `textSearchProvider` proposals.
 
