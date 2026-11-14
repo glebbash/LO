@@ -1,0 +1,15 @@
+{
+    // Default user settings of the playground (settings.json format, comments and trailing commas are fine).
+    //
+    // To export your own: in the playground run "Preferences: Open User Settings (JSON)", copy everything
+    // (or just the keys you want as defaults) and paste it here, then rebuild. These are *defaults*: visitors can
+    // still override every one of them. They win over the defaults hardcoded in main.js.
+
+    "window.density.layout": "compact",
+    "window.commandCenter": false,
+    "workbench.layoutControl.enabled": false,
+    "editor.mouseWheelZoom": true,
+    "chat.disableAIFeatures": true,
+    "terminal.integrated.initialHint": false,
+    "editor.formatOnSave": true
+}

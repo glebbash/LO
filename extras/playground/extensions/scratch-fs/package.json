@@ -1,0 +1,40 @@
+{
+    "name": "scratch-fs",
+    "displayName": "Scratch FS",
+    "publisher": "lo-playground",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "browser": "./extension.js",
+    "activationEvents": [
+        "onFileSystem:scratch",
+        "onStartupFinished",
+        "onCommand:scratch.downloadZip"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
+    "contributes": {
+        "commands": [
+            {
+                "command": "scratch.reset",
+                "title": "Scratch: Reset workspace to examples"
+            },
+            {
+                "command": "scratch.downloadZip",
+                "title": "Scratch: Download workspace as zip"
+            }
+        ]
+    },
+    "enabledApiProposals": [
+        "fileSearchProvider",
+        "textSearchProvider"
+    ],
+    "extensionDependencies": [
+        "ms-vscode.wasm-wasi-core"
+    ]
+}

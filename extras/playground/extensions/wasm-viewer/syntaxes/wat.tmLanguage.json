@@ -1,0 +1,31 @@
+{
+    "scopeName": "source.wat",
+    "name": "WebAssembly Text",
+    "patterns": [
+        { "include": "#comments" },
+        { "include": "#strings" },
+        { "include": "#ids" },
+        { "include": "#numbers" },
+        { "include": "#types" },
+        { "include": "#instructions" },
+        { "include": "#keywords" },
+        { "name": "punctuation.section.wat", "match": "[()]" }
+    ],
+    "repository": {
+        "comments": { "patterns": [
+            { "name": "comment.line.wat", "match": ";;.*$" },
+            { "name": "comment.block.wat", "begin": "\\(;", "end": ";\\)" }
+        ] },
+        "strings": { "name": "string.quoted.double.wat", "begin": "\"", "end": "\"", "patterns": [
+            { "name": "constant.character.escape.wat", "match": "\\\\([0-9a-fA-F]{2}|[tnr\"'\\\\]|u\\{[0-9a-fA-F]+\\})" }
+        ] },
+        "ids": { "name": "variable.other.wat", "match": "\\$[0-9A-Za-z!#$%&'*+\\-./:<=>?@\\\\^_`|~]+" },
+        "numbers": { "name": "constant.numeric.wat", "match": "(?<![\\w.$])[-+]?(?:0x[0-9a-fA-F_]+(?:\\.[0-9a-fA-F_]*)?(?:p[-+]?\\d+)?|\\d[\\d_]*(?:\\.[\\d_]*)?(?:[eE][-+]?\\d+)?|inf|nan(?::0x[0-9a-fA-F]+)?)(?![\\w.$])" },
+        "types": { "name": "support.type.wat", "match": "\\b(?:i32|i64|f32|f64|v128|funcref|externref|anyfunc)\\b(?!\\.)" },
+        "instructions": { "patterns": [
+            { "name": "keyword.control.wat", "match": "\\b(?:block|loop|if|else|end|br|br_if|br_table|return|call|call_indirect|return_call|return_call_indirect|unreachable|nop|drop|select|then)\\b" },
+            { "name": "support.function.wat", "match": "\\b(?:i32|i64|f32|f64|v128|memory|table|local|global|ref|data|elem)\\.[a-z0-9_.]+\\b" }
+        ] },
+        "keywords": { "name": "keyword.other.wat", "match": "\\b(?:module|func|param|result|local|global|memory|table|elem|data|import|export|type|start|mut|offset|item|declare|align|offset)\\b" }
+    }
+}

@@ -1,0 +1,85 @@
+{
+    "name": "lo-shell",
+    "displayName": "LO Shell",
+    "publisher": "lo-playground",
+    "version": "0.0.1",
+    "description": "Minimal shell in the VS Code terminal view: coreutils (ls, cat, ...) and running .wasm files. Replacement for ms-vscode.webshell, which is incompatible with wasm-wasi-core 1.0.",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "browser": "./extension.js",
+    "extensionDependencies": [
+        "ms-vscode.wasm-wasi-core"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "onTerminalProfile:lo-shell.shell",
+        "onCommand:lo-shell.ensure"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
+    "contributes": {
+        "terminal": {
+            "profiles": [
+                {
+                    "id": "lo-shell.shell",
+                    "title": "LO Shell"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "lo-shell.new",
+                "title": "New LO Shell",
+                "category": "Terminal"
+            },
+            {
+                "command": "lo-shell.focus",
+                "title": "Focus LO Shell",
+                "category": "Terminal"
+            },
+            {
+                "command": "lo-shell.ensure",
+                "title": "Create LO Shell if there is no terminal",
+                "category": "Terminal"
+            }
+        ],
+        "configurationDefaults": {
+            "terminal.integrated.defaultProfile.linux": "LO Shell",
+            "terminal.integrated.defaultProfile.osx": "LO Shell",
+            "terminal.integrated.defaultProfile.windows": "LO Shell"
+        },
+        "keybindings": [
+            {
+                "key": "ctrl+`",
+                "mac": "ctrl+`",
+                "command": "workbench.action.closePanel",
+                "when": "terminalFocus"
+            },
+            {
+                "key": "ctrl+`",
+                "mac": "ctrl+`",
+                "command": "lo-shell.new",
+                "when": "!terminalFocus && terminalCount == 0"
+            },
+            {
+                "key": "ctrl+`",
+                "mac": "ctrl+`",
+                "command": "lo-shell.focus",
+                "when": "!terminalFocus && terminalCount > 0"
+            }
+        ],
+        "menus": {
+            "commandPalette": [
+                {
+                    "command": "lo-shell.ensure",
+                    "when": "false"
+                }
+            ]
+        }
+    }
+}
