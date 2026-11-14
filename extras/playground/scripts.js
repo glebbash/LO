@@ -11,6 +11,7 @@ const CFG = JSON.parse(
 ).config;
 const CACHE = path.join(ROOT, ".cache");
 const DIST = path.join(ROOT, "dist");
+const WORKBENCH_JS = path.join(DIST, "vscode/out/vs/workbench/workbench.web.main.internal.js");
 
 await main(process.argv.slice(2));
 
@@ -54,11 +55,7 @@ function dropBuiltinExtension(name) {
         force: true,
     });
 
-    const file = path.join(
-        DIST,
-        "vscode/out/vs/workbench/workbench.web.main.internal.js",
-    );
-    const src = fs.readFileSync(file, "utf8");
+    const src = fs.readFileSync(WORKBENCH_JS, "utf8");
     const start = src.indexOf(`{extensionPath:${JSON.stringify(name)},`);
     if (start < 0) throw new Error(`built-in extension ${name} not found in the workbench bundle`);
 
@@ -80,7 +77,22 @@ function dropBuiltinExtension(name) {
 
     // drop the separating comma as well
     const [from, to] = src[start - 1] === "," ? [start - 1, end] : [start, end + 1];
-    fs.writeFileSync(file, src.slice(0, from) + src.slice(to));
+    fs.writeFileSync(WORKBENCH_JS, src.slice(0, from) + src.slice(to));
+}
+
+/**
+ * Makes the icons of the extension views load in CORS mode. The page is cross-origin isolated with `require-corp`, which
+ * blocks a plain `<img>` of a server without a Cross-Origin-Resource-Policy header, like Open VSX. It sends CORS headers.
+ */
+function patchExtensionIcons() {
+    const src = fs.readFileSync(WORKBENCH_JS, "utf8");
+    let count = 0;
+    const patched = src.replace(/(\w+\("img\.icon",\{alt:"")\}\)/g, (_, head) => {
+        count++;
+        return `${head},crossorigin:"anonymous"})`;
+    });
+    if (count === 0) throw new Error("extension icon widget not found in the workbench bundle");
+    fs.writeFileSync(WORKBENCH_JS, patched);
 }
 
 async function build() {
@@ -130,6 +142,7 @@ async function build() {
         }
     }
     dropBuiltinExtension("mermaid-markdown-features");
+    patchExtensionIcons();
     // Unused bundle of the agents window, close to Cloudflare's 25 MiB file limit.
     fs.rmSync(path.join(DIST, "vscode/out/vs/sessions"), {
         recursive: true,
@@ -296,7 +309,7 @@ function serve(port) {
         if (fs.existsSync(p) && fs.statSync(p).isDirectory())
             p = path.join(p, "index.html");
         res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-        res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
+        res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
         res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
         res.setHeader("Access-Control-Allow-Origin", "*");
         if (!fs.existsSync(p)) {
