@@ -5,7 +5,7 @@
     "author": "glebbash",
     "publisher": "glebbash",
     "license": "MIT",
-    "version": "0.0.130",
+    "version": "0.0.134",
     "engines": {
         "vscode": "^1.88.0"
     },
@@ -64,12 +64,13 @@
         ],
         "commands": [
             {
-                "command": "lo.initProject",
-                "title": "LO: Initialize project in the current workspace"
+                "command": "lo.downloadCompiler",
+                "title": "Download compiler (lo.wasm)",
+                "category": "LO"
             },
             {
                 "command": "lo.runFile",
-                "title": "LO: Run current file",
+                "title": "Run current file",
                 "category": "LO",
                 "icon": "$(debug-start)"
             }

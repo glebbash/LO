@@ -21,6 +21,8 @@ type DiagnisticItem =
     | { type: "end" };
 
 const ID = "lo";
+const COMPILER_DOWNLOAD_URL =
+    "https://raw.githubusercontent.com/glebbash/LO/main/lo.wasm";
 
 export async function activate(context: vscode.ExtensionContext) {
     const logChannel = vscode.window.createOutputChannel("LO extension");
@@ -201,27 +203,52 @@ export async function activate(context: vscode.ExtensionContext) {
     };
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("lo.initProject", async () => {
+        vscode.commands.registerCommand("lo.downloadCompiler", async () => {
             let workspaceUri = getDefaultWorkspaceUri();
             if (!workspaceUri) {
                 return vscode.window.showErrorMessage("No folder open");
             }
 
-            const initDir = vscode.Uri.joinPath(
-                context.extensionUri,
-                "assets/initial-project",
+            const compilerUri = vscode.Uri.joinPath(workspaceUri, "lo.wasm");
+            const exists = await vscode.workspace.fs.stat(compilerUri).then(
+                () => true,
+                () => false,
             );
+            if (exists) {
+                const answer = await vscode.window.showWarningMessage(
+                    "lo.wasm already exists in the workspace. Overwrite it?",
+                    { modal: true },
+                    "Overwrite",
+                );
+                if (answer !== "Overwrite") {
+                    return;
+                }
+            }
 
-            const initFiles = ["lo.wasm", "main.lo", "lib"];
-
-            for (const file of initFiles) {
-                await vscode.workspace.fs.copy(
-                    vscode.Uri.joinPath(initDir, file),
-                    vscode.Uri.joinPath(workspaceUri, file),
+            try {
+                await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: "Downloading lo.wasm",
+                    },
+                    async () => {
+                        const res = await fetch(COMPILER_DOWNLOAD_URL);
+                        if (!res.ok) {
+                            throw new Error(`${res.status} ${res.statusText}`);
+                        }
+                        await vscode.workspace.fs.writeFile(
+                            compilerUri,
+                            new Uint8Array(await res.arrayBuffer()),
+                        );
+                    },
+                );
+            } catch (err) {
+                return vscode.window.showErrorMessage(
+                    `Failed to download lo.wasm from ${COMPILER_DOWNLOAD_URL}: ${err}`,
                 );
             }
 
-            await vscode.window.showInformationMessage("Project initialized");
+            await vscode.window.showInformationMessage("Downloaded lo.wasm");
         }),
     );
 
@@ -281,6 +308,23 @@ export async function activate(context: vscode.ExtensionContext) {
                     detail: "" + err,
                 });
             }
+
+            const runIntMain = initAsIntMain(programModule);
+            if (runIntMain) {
+                const run = await runIntMain();
+                if ("error" in run) {
+                    return vscode.window.showErrorMessage("Program errored", {
+                        modal: true,
+                        detail: run.error,
+                    });
+                }
+
+                return vscode.window.showInformationMessage("Program result", {
+                    modal: true,
+                    detail: `main() returned ${run.result}`,
+                });
+            }
+
             const programResult = await wasi.runWasiProgram({
                 processName: currentFile.uri.fsPath,
                 cwdUri: workspaceUri,
@@ -585,6 +629,36 @@ async function formatFile(
             formattedFile,
         ),
     ];
+}
+
+/**
+ * For simpler, non WASI, programs with exported `main` function,
+ *   that function is called and the result is printed, imports not supported.
+ */
+function initAsIntMain(module: WebAssembly.Module) {
+    const exports = WebAssembly.Module.exports(module);
+
+    const isIntMain =
+        !exports.some((e) => e.name === "_start" && e.kind === "function") &&
+        exports.some((e) => e.name === "main" && e.kind === "function");
+
+    if (!isIntMain) {
+        return null;
+    }
+
+    return async (): Promise<{ result: unknown } | { error: string }> => {
+        if (WebAssembly.Module.imports(module).length > 0) {
+            return { error: `int main programs don't support imports` };
+        }
+
+        try {
+            const instance = await WebAssembly.instantiate(module);
+            const main = instance.exports.main as () => unknown;
+            return { result: main() };
+        } catch (err) {
+            return { error: String(err) };
+        }
+    };
 }
 
 async function loadCompilerCtx(workspaceUri: vscode.Uri) {

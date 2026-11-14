@@ -4,7 +4,7 @@
 
 This extension adds the following commands:
 
-- `LO: Initialize project in the current workspace`
+- `LO: Download compiler (lo.wasm)` (downloads the latest `lo.wasm` from the GitHub into the workspace root, asks before overwriting an existing one)
 - `LO: Run current file`
 
 To compile `.lo` files to `.wasm` (using [WebShell](https://marketplace.visualstudio.com/items?itemName=ms-vscode.webshell)):

@@ -2,18 +2,9 @@
 set -e
 
 main() {
-    rm -rf assets/initial-project
-    mkdir assets/initial-project
-    cp -r ../../lib assets/initial-project
-    cp ../../test/demos/hello-world.lo assets/initial-project/main.lo
-    sed -i '1s|../../lib/cli.lo|./lib/cli.lo|' assets/initial-project/main.lo
-    cp ../../lo.wasm assets/initial-project/lo.wasm
-
     npm version patch
     npm run build
     npx vsce package -o lo.vsix
-
-    rm -rf assets/initial-project
 }
 
 # cwd will be restored after subshell exits
