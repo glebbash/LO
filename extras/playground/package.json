@@ -16,6 +16,7 @@
         ],
         "wabt": "1.0.39",
         "coreutilsFrom": "ms-vscode.webshell",
-        "defaultTheme": "GitHub Dark Default"
+        "defaultTheme": "GitHub Dark Default",
+        "wasm4": "2.7.1"
     }
 }

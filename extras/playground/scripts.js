@@ -251,6 +251,51 @@ async function build() {
         );
     }
 
+    // WASM-4 runtime for the wasm4 extension: the developer build for the editor tab, the slim one for exported pages.
+    {
+        const tgz = path.join(CACHE, `wasm4-${CFG.wasm4}.tgz`);
+        if (!fs.existsSync(tgz))
+            await download(
+                `https://registry.npmjs.org/wasm4/-/wasm4-${CFG.wasm4}.tgz`,
+                tgz,
+            );
+        const dir = path.join(CACHE, `wasm4-${CFG.wasm4}`);
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.mkdirSync(dir, { recursive: true });
+        sh("tar", [
+            "xzf",
+            tgz,
+            "-C",
+            dir,
+            "--strip-components=1",
+            "package/LICENSE.txt",
+            "package/assets/runtime/developer-build/wasm4.js",
+            "package/assets/runtime/developer-build/wasm4.css",
+            "package/assets/runtime/slim/wasm4.js",
+            "package/assets/runtime/slim/wasm4.css",
+        ]);
+        const target = path.join(DIST, "extensions/wasm4/vendor/wasm4");
+        for (const [from, to] of [
+            ["LICENSE.txt", "LICENSE.txt"],
+            ["assets/runtime/developer-build/wasm4.js", "dev/wasm4.js"],
+            ["assets/runtime/developer-build/wasm4.css", "dev/wasm4.css"],
+            ["assets/runtime/slim/wasm4.js", "slim/wasm4.js"],
+            ["assets/runtime/slim/wasm4.css", "slim/wasm4.css"],
+        ]) {
+            fs.mkdirSync(path.dirname(path.join(target, to)), { recursive: true });
+            fs.copyFileSync(path.join(dir, from), path.join(target, to));
+        }
+        // The runtime also listens for keys on `top`. That throws and is ignored for a cross-origin webview, but ours is
+        // same-origin, so the game would get (and swallow) every key typed in the editor.
+        const devRuntime = path.join(target, "dev/wasm4.js");
+        const keyListenersOnTop = "top&&top!=window";
+        const devSource = fs.readFileSync(devRuntime, "utf8");
+        if (!devSource.includes(keyListenersOnTop))
+            throw new Error("wasm4 runtime: key listeners on `top` not found, update the patch in scripts.js");
+        fs.writeFileSync(devRuntime, devSource.replace(keyListenersOnTop, "false"));
+        fs.writeFileSync(path.join(target, "version.txt"), `${CFG.wasm4}\n`);
+    }
+
     // VS Code requests package.nls.json of every extension, avoid the 404s.
     for (const name of extDirs) {
         const nls = path.join(DIST, "extensions", name, "package.nls.json");

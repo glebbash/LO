@@ -27,6 +27,7 @@ Open it as `localhost`, the page needs a secure context.
 | `src/`                    | `index.html`, `main.js` (workbench setup), `about.js` (About dialog) and `playground.code-profile` (default profile)                   |
 | `extensions/scratch-fs/`  | The `scratch:` file system, file and text search, first start seeding, workspace zip download                                          |
 | `extensions/lo-shell/`    | Shell in the terminal view                                                                                                             |
+| `extensions/wasm4/`       | Runs WASM-4 games written in LO in an editor tab, rebuilds them on save, exports a standalone HTML page                                |
 | `extensions/wasm-viewer/` | Opens `.wasm` files as WAT, WAT highlighting, `wasm2wat` and `wat2wasm` for the shell                                                  |
 | `public/_headers`         | Headers for Cloudflare Pages                                                                                                           |
 
@@ -66,6 +67,12 @@ On the first start `scratch-fs` downloads `lo.wasm` from `raw.githubusercontent.
 - **Whole workspace:** `Scratch: Download workspace as zip`. In a single-folder workspace the root cannot be selected in the Explorer, so the built-in Download cannot do it.
 - **A file or folder:** the Explorer's **Download...**. A folder is written file by file into a directory you pick, which needs the File System Access API, so it works in Chromium based browsers only.
 
+## WASM-4
+
+Open a LO file for the [WASM-4](https://wasm4.org) fantasy console (the ejected `test/demos/wasm4/src/` has samples) and use the game icon in the editor title, or `WASM-4: Run current file`. The file is compiled with the `lo.wasm` in the workspace root and the game opens in a tab next to the editor. Click the game to give it the keyboard (arrow keys, `X` and `Z`, `R` restarts). While the tab is open, saving any `.lo` file rebuilds the game and reloads it. The title bar of the game tab has three buttons: rebuild and restart the game now (always a full reload, `debug-rerun` icon), a toggle for reloading on save (setting `wasm4.rebuildOnSave`, `sync` when on and `sync-ignored` when off) and a toggle for hot swap (setting `wasm4.hotSwap`, keeps the memory of the game on reload, `beaker` when on and `beaker-stop` when off). VS Code's own toggle highlight is not used because themes do not render it clearly, so each toggle is a pair of commands with an icon per state. Build errors are in the "WASM-4" output.
+
+`WASM-4: Export HTML` writes a standalone page next to the source file (`dark-maze.lo` becomes `dark-maze.html`) with the runtime and the cart inside, the same format as `w4 bundle --html`. The message that follows has a Download button.
+
 ## Implementation notes
 
 **VS Code build.** The web client is the `@github1s/vscode-web` npm package: Code - OSS (MIT), built from the `microsoft/vscode` sources with a few patches by the github1s project, and a few months behind stable. Microsoft's own `web-standalone` build is not used, its license (https://code.visualstudio.com/license/server) does not allow to "host, share, publish, rent or lease the software", so it is fine for local development only. The fallback is building Code - OSS from source (`vscode-web-min` gulp task). The package's `vscode/` folder is served as `/vscode/out/`, its `dependencies/` and `extensions/` folders keep their names, the workbench loads files from them by path.
@@ -91,6 +98,8 @@ On the first start `scratch-fs` downloads `lo.wasm` from `raw.githubusercontent.
 - The toggle terminal keybinding only closes the panel once the terminal has focus and does nothing without a terminal, so `lo-shell` rebinds it (`contributes.keybindings`): close when a terminal has focus, focus it otherwise, create a shell if there is none.
 - A terminal panel restored as open from the saved UI state is empty, `src/main.js` calls `lo-shell.ensure` for that case.
 - Programs get the current directory mounted at `/`, relative paths like `compile main.lo` need that. `argv[0]` is added by wasm-wasi-core, so the arguments passed to `createProcess` start after the program name.
+
+**WASM-4.** The extension uses two builds of the runtime from the `wasm4` npm package (ISC license, version in `package.json` `config.wasm4`): the developer build with devtools in the editor tab, and the slim build in the exported page. The developer build expects the `w4 watch` server: it fetches `cart.wasm` and waits for `reload` and `hotswap` messages on a WebSocket. The tab replaces both with a small shim (`devServerShim` in the extension), so a rebuild only posts the new cart to the webview. The cart is compiled in the extension host by running `lo.wasm compile` with wasm-wasi-core, like the seeding does with `eject`. Only saved files are compiled, so the editor saves the active file before running. The export is checked against the committed `extras/assets/dark-maze.html` made by `w4 bundle`. The developer runtime also registers its key handler on `top`. For a cross-origin webview that throws and is ignored, but here the webview is same-origin, so the game would receive and swallow every key typed in the editor (it claims letters, space, `2`, `4` and `R`). The build removes that registration from the vendored copy and fails if it cannot find it, which happens when the runtime version changes.
 
 **Downloads.** An extension runs in a web worker and cannot start a browser download. `src/main.js` registers `playground.download`, which `scratch-fs` calls with the zip.
 
