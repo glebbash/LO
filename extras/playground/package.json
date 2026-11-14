@@ -8,8 +8,7 @@
         "serve": "node scripts.js serve"
     },
     "config": {
-        "vscodeCommit": "69047191fc427f2f92828279aae1d90d8eeda7ab",
-        "vscodeQuality": "stable",
+        "vscodeWeb": "0.30.3",
         "extensions": [
             "glebbash.lo",
             "ms-vscode.wasm-wasi-core",

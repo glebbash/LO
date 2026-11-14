@@ -1,5 +1,5 @@
-// "About LO Playground" dialog, opened by clicking the remote indicator in the bottom left (windowIndicator in main.js).
-// A plain HTML <dialog> (VS Code's own dialogs can't show links or formatting) styled with the current theme's colors.
+// About dialog, opened from the indicator in the bottom left. Plain HTML, styled with the theme's colors, because VS Code's
+// own dialogs have no links or formatting.
 const REPO = "https://github.com/glebbash/LO";
 
 const css = `
@@ -9,7 +9,7 @@ const css = `
 .lo-about::backdrop { background: rgba(0, 0, 0, .45); }
 .lo-about * { box-sizing: border-box; }
 .lo-about header { display: flex; align-items: center; gap: 14px; padding: 20px 24px 8px; }
-.lo-about header img { width: 56px; height: auto; flex: none; border-radius: 6px; background: #feb87c; padding: 6px; }
+.lo-about header img { height: 52px; width: auto; flex: none; }
 .lo-about h1 { margin: 0; font-size: 20px; font-weight: 700; }
 .lo-about header p { margin: 2px 0 0; opacity: .75; }
 .lo-about .body { padding: 8px 24px 4px; }
@@ -21,7 +21,7 @@ const css = `
 .lo-about footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 24px 20px; }
 .lo-about .small { opacity: .65; font-size: 12px; }
 .lo-about .buttons { display: flex; gap: 8px; }
-.lo-about button, .lo-about a.btn { font: inherit; padding: 5px 14px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; text-decoration: none; display: inline-block; }
+.lo-about button, .lo-about a.btn { white-space: nowrap; font: inherit; padding: 5px 14px; border-radius: 2px; border: 1px solid transparent; cursor: pointer; text-decoration: none; display: inline-block; }
 .lo-about a.btn, .lo-about button.primary { background: var(--vscode-button-background, #0e639c); color: var(--vscode-button-foreground, #fff); }
 .lo-about a.btn:hover, .lo-about button.primary:hover { background: var(--vscode-button-hoverBackground, #1177bb); text-decoration: none; color: var(--vscode-button-foreground, #fff); }
 .lo-about button.secondary { background: var(--vscode-button-secondaryBackground, #3a3d41); color: var(--vscode-button-secondaryForeground, #fff); }
@@ -29,18 +29,23 @@ const css = `
 .lo-about :focus-visible { outline: 1px solid var(--vscode-focusBorder, #007fd4); outline-offset: 2px; }
 `;
 
-let vscodeVersion;
-async function getVscodeVersion() {
-    vscodeVersion ??= await fetch("/vscode/package.json").then((r) => r.json()).then((j) => j.version).catch(() => "");
-    return vscodeVersion;
+let vscodeWebVersion;
+async function getVscodeWebVersion() {
+    vscodeWebVersion ??= await fetch("/playground-config.json")
+        .then((r) => r.json())
+        .then((j) => j.vscodeWeb)
+        .catch(() => "");
+    return vscodeWebVersion;
 }
 
 export async function showAbout() {
     if (document.querySelector("dialog.lo-about")) return;
-    const version = await getVscodeVersion();
+    const version = await getVscodeWebVersion();
 
     const host = document.querySelector(".monaco-workbench") ?? document.body; // theme variables live on the workbench
-    const dialog = Object.assign(document.createElement("dialog"), { className: "lo-about" });
+    const dialog = Object.assign(document.createElement("dialog"), {
+        className: "lo-about",
+    });
     dialog.setAttribute("aria-label", "About LO Playground");
     dialog.innerHTML = `
         <style>${css}</style>
@@ -55,22 +60,27 @@ export async function showAbout() {
             <p><strong>LO</strong> is a small programming language that compiles to WebAssembly. Here the compiler
             (<code>lo.wasm</code>) runs as WebAssembly inside a VS Code web build, so there is nothing to install.</p>
             <ul>
-                <li>Your files live in the <em>Scratch FS</em> workspace, saved in this browser (IndexedDB), and can be
-                    downloaded as a zip with <code>Scratch: Download workspace as zip</code>.</li>
+                <li>Your files live in the <em>Scratch FS</em> workspace, saved in this browser (IndexedDB). Download the whole
+                    workspace with <code>Scratch: Download workspace as zip</code>, or a single file or folder from the Explorer
+                    (right-click, <em>Download...</em>).</li>
                 <li>Run a file with <kbd>▶</kbd> in the editor toolbar, or from the terminal: <code>./lo.wasm compile main.lo &gt; main.wasm</code>.</li>
                 <li>Everything runs locally, no code is sent to a server.</li>
             </ul>
             <p>Source, docs and issues: <a href="${REPO}" target="_blank" rel="noopener noreferrer">github.com/glebbash/LO</a></p>
         </div>
         <footer>
-            <span class="small">VS Code for the Web${version ? " " + version : ""}</span>
+            <span class="small">Code - OSS web build${version ? " (@github1s/vscode-web " + version + ")" : ""}</span>
             <span class="buttons">
                 <a class="btn" href="${REPO}" target="_blank" rel="noopener noreferrer">Open GitHub repo</a>
                 <button class="secondary" value="close" autofocus>Close</button>
             </span>
         </footer>`;
-    dialog.addEventListener("click", (e) => { if (e.target === dialog) dialog.close(); }); // click on the backdrop
-    dialog.querySelector("button[value=close]").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", (e) => {
+        if (e.target === dialog) dialog.close();
+    }); // click on the backdrop
+    dialog
+        .querySelector("button[value=close]")
+        .addEventListener("click", () => dialog.close());
     dialog.addEventListener("close", () => dialog.remove());
     host.append(dialog);
     dialog.showModal();

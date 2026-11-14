@@ -1,5 +1,5 @@
-// Opens .wasm files as WAT text (read-only virtual document), WAT language support, and wasm2wat / wat2wasm for other
-// extensions (lo-shell). Conversion is done by wabt.js (vendor/wabt/index.js, added by scripts.js).
+// Opens .wasm files as WAT text in a read-only document and exposes wasm2wat / wat2wasm to other extensions (lo-shell).
+// The conversion is done by wabt.js (vendor/wabt/, added by scripts.js).
 const vscode = require("vscode");
 
 const FEATURES = {
@@ -41,7 +41,7 @@ exports.activate = (context) => {
         } finally { m.destroy(); }
     }
 
-    // wasm-wat:/path/to/file.wasm.wat?<original uri> -> WAT of the original
+    // wasm-wat:<path>.wat?<original uri>
     const changed = new vscode.EventEmitter();
     context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(SCHEME, {
         onDidChange: changed.event,
@@ -58,7 +58,7 @@ exports.activate = (context) => {
         await vscode.window.showTextDocument(doc, { viewColumn, preview: false });
     }
 
-    // Double clicking a .wasm file: show the WAT in the same tab position (custom editors can't host a text editor)
+    // A custom editor cannot show text, so it opens the WAT document in its place.
     context.subscriptions.push(vscode.window.registerCustomEditorProvider("wasmViewer.wat", {
         openCustomDocument: (uri) => ({ uri, dispose() {} }),
         async resolveCustomEditor(document, panel) {

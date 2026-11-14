@@ -29,32 +29,6 @@ async function main(args) {
     }
 }
 
-/** JSONC (comments, trailing commas) -> value; strings are respected */
-function parseJsonc(text) {
-    let out = "",
-        i = 0;
-    while (i < text.length) {
-        const c = text[i],
-            n = text[i + 1];
-        if (c === '"') {
-            // copy the whole string literal
-            let j = i + 1;
-            while (text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
-            out += text.slice(i, j + 1);
-            i = j + 1;
-        } else if (c === "/" && n === "/") {
-            while (i < text.length && text[i] !== "\n") i++;
-        } else if (c === "/" && n === "*") {
-            i = text.indexOf("*/", i + 2) + 2;
-            if (i < 2) throw new Error("unterminated /* comment");
-        } else {
-            out += c;
-            i++;
-        }
-    }
-    return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1")); // trailing commas (a "," followed by } or ] can't be inside a string here)
-}
-
 function sh(cmd, args) {
     return execFileSync(cmd, args, { stdio: "inherit" });
 }
@@ -74,59 +48,55 @@ async function build() {
     fs.rmSync(DIST, { recursive: true, force: true });
     fs.mkdirSync(DIST, { recursive: true });
 
-    // 1. VS Code web build
-    const vscodeDir = path.join(CACHE, `vscode-web-${CFG.vscodeCommit}`);
-    if (!fs.existsSync(path.join(vscodeDir, "out"))) {
-        const tarball = path.join(
-            CACHE,
-            `vscode-web-${CFG.vscodeCommit}.tar.gz`,
-        );
-        const url = `https://update.code.visualstudio.com/commit:${CFG.vscodeCommit}/web-standalone/${CFG.vscodeQuality}`;
-        console.log("downloading VS Code web", url);
+    // VS Code web client, see README for why this package. Its vscode/ folder becomes out/, the rest keeps its name.
+    const vscodeDir = path.join(CACHE, `vscode-web-${CFG.vscodeWeb}`);
+    if (!fs.existsSync(path.join(vscodeDir, "vscode"))) {
+        const tarball = path.join(CACHE, `vscode-web-${CFG.vscodeWeb}.tgz`);
+        const url = `https://registry.npmjs.org/@github1s/vscode-web/-/vscode-web-${CFG.vscodeWeb}.tgz`;
+        console.log("downloading VS Code web (Code - OSS)", url);
         await download(url, tarball);
+        fs.rmSync(vscodeDir, { recursive: true, force: true });
         fs.mkdirSync(vscodeDir, { recursive: true });
         sh("tar", ["xzf", tarball, "-C", vscodeDir, "--strip-components=1"]);
     }
-    // only the static client is needed, not the node server
-    for (const entry of [
-        "out",
-        "extensions",
-        "node_modules",
-        "favicon.ico",
-        "code-192.png",
-        "code-512.png",
-        "manifest.json",
-        "package.json",
+    for (const [from, to] of [
+        ["vscode", "out"],
+        ["extensions", "extensions"],
+        ["dependencies", "dependencies"],
+        ["favicon.ico", "favicon.ico"],
     ]) {
-        const src = path.join(vscodeDir, entry);
-        if (fs.existsSync(src))
-            fs.cpSync(src, path.join(DIST, "vscode", entry), {
-                recursive: true,
-            });
+        fs.cpSync(path.join(vscodeDir, from), path.join(DIST, "vscode", to), {
+            recursive: true,
+        });
     }
-    // built-in extensions we don't want (keep github-authentication: the workbench still tries to activate it):
-    // chat/AI contributions, and the JS/TS, HTML and CSS language servers (syntax highlighting is in the *-basics/html/css packs, which stay)
+    // Built-in extensions we don't ship. They are replaced by a no-op stub at the entry point of their manifest, because
+    // the manifests are baked into the workbench, which activates them anyway.
     for (const ext of [
         "TypeScriptTeam.jsts-chat-features",
-        "mermaid-markdown-features",
         "prompt-basics",
         "typescript-language-features",
         "html-language-features",
         "css-language-features",
     ]) {
-        fs.rmSync(path.join(DIST, "vscode/extensions", ext), {
-            recursive: true,
-            force: true,
-        });
+        const dir = path.join(DIST, "vscode/extensions", ext);
+        const manifestFile = path.join(dir, "package.json");
+        const entry = fs.existsSync(manifestFile)
+            ? JSON.parse(fs.readFileSync(manifestFile, "utf8")).browser
+            : undefined;
+        fs.rmSync(dir, { recursive: true, force: true });
+        if (entry) {
+            const file = path.join(dir, entry.endsWith(".js") ? entry : `${entry}.js`);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, "exports.activate = function () {};\nexports.deactivate = function () {};\n");
+        }
     }
-    // Agents-window bundle, unused, and 24MB is too close to Cloudflare's 25MiB per-file limit
+    // Unused bundle of the agents window, close to Cloudflare's 25 MiB file limit.
     fs.rmSync(path.join(DIST, "vscode/out/vs/sessions"), {
         recursive: true,
         force: true,
     });
 
-    // 2. extensions from Open VSX
-    /** downloads the latest `publisher.name` vsix from Open VSX and unpacks it, returns the `extension/` dir */
+    /** Downloads the latest `publisher.name` vsix from Open VSX, unpacks it and returns the `extension/` folder. */
     async function fetchExtension(id) {
         const [publisher, name] = id.split(".");
         const meta = await (
@@ -171,7 +141,7 @@ async function build() {
         }
     }
 
-    // 3. our own extensions (./extensions/*), page
+    // Our own extensions.
     for (const name of fs.readdirSync(path.join(ROOT, "extensions"))) {
         fs.cpSync(
             path.join(ROOT, "extensions", name),
@@ -180,7 +150,7 @@ async function build() {
         );
         extDirs.push(name);
     }
-    // lo-shell runs coreutils.wasm, which ships inside ms-vscode.webshell (MIT, microsoft/vscode-wasm)
+    // coreutils.wasm for lo-shell is taken from the webshell extension.
     {
         const src = path.join(
             await fetchExtension(CFG.coreutilsFrom),
@@ -196,7 +166,7 @@ async function build() {
         );
     }
 
-    // wabt.js (npm `wabt`, Apache-2.0): used by wasm-viewer for wasm2wat / wat2wasm
+    // wabt.js for wasm-viewer.
     {
         const tgz = path.join(CACHE, `wabt-${CFG.wabt}.tgz`);
         if (!fs.existsSync(tgz))
@@ -228,31 +198,24 @@ async function build() {
         );
     }
 
-    // VS Code always requests <ext>/package.nls.json; extensions without one cause a 404 (console noise) each time
+    // VS Code requests package.nls.json of every extension, avoid the 404s.
     for (const name of extDirs) {
         const nls = path.join(DIST, "extensions", name, "package.nls.json");
         if (!fs.existsSync(nls)) fs.writeFileSync(nls, "{}\n");
     }
 
     fs.cpSync(path.join(ROOT, "public"), DIST, { recursive: true });
-    fs.cpSync(path.join(ROOT, "src", "main.js"), path.join(DIST, "main.js"));
-    // default settings (src/settings.json is JSONC; main.js fetches the plain JSON version)
-    fs.writeFileSync(
-        path.join(DIST, "settings.json"),
-        JSON.stringify(
-            parseJsonc(
-                fs.readFileSync(
-                    path.join(ROOT, "src", "settings.json"),
-                    "utf8",
-                ),
-            ),
-        ),
+    // Default profile, see README.
+    fs.copyFileSync(
+        path.join(ROOT, "src", "playground.code-profile"),
+        path.join(DIST, "playground.code-profile"),
     );
+    fs.cpSync(path.join(ROOT, "src", "main.js"), path.join(DIST, "main.js"));
     fs.cpSync(path.join(ROOT, "src", "about.js"), path.join(DIST, "about.js"));
     fs.copyFileSync(
         path.join(REPO_ROOT, "extras/vscode-ext/assets/icons/lo.svg"),
         path.join(DIST, "lo.svg"),
-    ); // logo for the About dialog
+    );
     const html = fs.readFileSync(path.join(ROOT, "src", "index.html"), "utf8");
     fs.writeFileSync(path.join(DIST, "index.html"), html);
     fs.writeFileSync(
@@ -260,7 +223,7 @@ async function build() {
         JSON.stringify({
             extensions: extDirs,
             defaultTheme: CFG.defaultTheme,
-            commit: CFG.vscodeCommit,
+            vscodeWeb: CFG.vscodeWeb,
         }),
     );
     console.log("built ->", DIST);

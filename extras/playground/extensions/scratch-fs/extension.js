@@ -1,10 +1,10 @@
-// In-memory FileSystemProvider for scheme `scratch:`, persisted to IndexedDB. Seeded on first start: downloads lo.wasm from GitHub and runs `lo.wasm eject`.
+// In-memory file system for the `scratch:` scheme, persisted to IndexedDB. On first start it downloads lo.wasm and unpacks the sources with `lo.wasm eject`.
 const vscode = require("vscode");
 
 const LO_WASM_URL = "https://raw.githubusercontent.com/glebbash/LO/main/lo.wasm";
 const MAIN = '@include("./lib/cli.lo")\n\nfn main() {\n    println("Hello World!")\n}\n';
 
-// The workspace folder is scratch:/Scratch FS, so the explorer shows "Scratch FS" instead of "/" (keep in sync with src/main.js)
+// The workspace folder is scratch:/Scratch FS (src/main.js), its name is the title of the Explorer.
 const ROOT = "/Scratch FS";
 const DB = "lo-playground-scratch", STORE = "files", KEY = "tree";
 const idb = () => new Promise((res, rej) => {
@@ -28,7 +28,7 @@ class ScratchFS {
         const saved = await idbGet().catch(() => undefined);
         if (saved && saved.some(([k]) => k === ROOT)) { this.entries = new Map(saved); return; }
         this._mkdir(ROOT);
-        this.needsSeed = true; // see seed(); nothing is persisted until seeding succeeded
+        this.needsSeed = true; // nothing is saved until seeding has succeeded
     }
     _persist() {
         if (this.needsSeed) return;
@@ -79,7 +79,7 @@ class ScratchFS {
     }
 }
 
-// --- search (Quick Open / Search view) --- proposed APIs, enabled for this extension in src/main.js
+// Search providers for Quick Open and the Search view (proposed APIs, enabled in src/main.js).
 const isBinary = (data) => data.subarray(0, 4096).includes(0);
 const subsequence = (needle, hay) => { let i = 0; for (const ch of hay) if (ch === needle[i] && ++i === needle.length) return true; return i === needle.length; };
 const globToRegExp = (g) => new RegExp("^" + g.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\/?/g, "\0").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]").replace(/\0/g, ".*") + "$");
@@ -136,7 +136,7 @@ function registerSearch(fs) {
     ];
 }
 
-// --- zip (store only, no compression) ---
+// Zip writer, entries are stored uncompressed.
 const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
 const crc32 = (d) => { let c = 0xffffffff; for (let i = 0; i < d.length; i++) c = CRC[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
 /** @param {[string, Uint8Array][]} files path (no leading slash, dirs end with "/") -> content */
@@ -170,7 +170,7 @@ function zip(files) {
 }
 const toBase64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 
-/** First start: download lo.wasm, then let it unpack its bundled src/, lib/ and test/ (`lo.wasm eject`) into the workspace. */
+/** Downloads lo.wasm and lets it unpack its bundled src/, lib/ and test/ into the workspace. */
 async function seed(fs) {
     const root = vscode.Uri.from({ scheme: "scratch", path: ROOT });
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Setting up Scratch FS" }, async (progress) => {
@@ -188,7 +188,7 @@ async function seed(fs) {
         const err = wasm.createReadable();
         err.onData((c) => stderr.push(new TextDecoder().decode(c)));
         const proc = await wasm.createProcess("lo", await WebAssembly.compile(bytes), {
-            args: ["eject"], // argv[0] is the process name, set by wasm-wasi-core
+            args: ["eject"], // argv[0] is added by wasm-wasi-core
             mountPoints: [{ kind: "vscodeFileSystem", uri: root, mountPoint: "/" }],
             stdio: { in: { kind: "pipeIn", pipe: wasm.createWritable() }, out: { kind: "pipeOut", pipe: wasm.createReadable() }, err: { kind: "pipeOut", pipe: err } },
         });
@@ -215,11 +215,11 @@ exports.activate = async (ctx) => {
             const name = k.slice(ROOT.length + 1);
             files.push(e.type === vscode.FileType.Directory ? [name + "/", new Uint8Array()] : [name, e.data]);
         }
-        // `playground.download` is registered by the page itself (src/main.js): a web worker can't start a download
+        // playground.download is registered by the page (src/main.js)
         await vscode.commands.executeCommand("playground.download", "scratch-fs.zip", "application/zip", toBase64(zip(files)));
     }));
     ctx.subscriptions.push(vscode.commands.registerCommand("scratch.reset", async () => {
         await idbSet([]);
-        await vscode.commands.executeCommand("workbench.action.reloadWindow"); // (the extension host is a worker: no `location.reload`)
+        await vscode.commands.executeCommand("workbench.action.reloadWindow");
     }));
 };

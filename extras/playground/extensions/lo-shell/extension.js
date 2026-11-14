@@ -1,8 +1,6 @@
-// A small shell in the VS Code terminal view, modeled after ms-vscode.webshell (MIT, microsoft/vscode-wasm/webshell)
-// but talking to wasm-wasi-core through `loader.load(1)`, which is what wasm-wasi-core 1.x exposes.
-//
-// Commands: builtins (cd, pwd, clear, help, exit), coreutils (ls, cat, mkdir, ...; wasm/coreutils.wasm), and any
-// `*.wasm` file in the workspace (`./lo.wasm compile in.lo > out.wasm`, also `run lo.wasm ...`). Supports `> file`.
+// A small shell for the terminal view, modeled after ms-vscode.webshell (MIT, microsoft/vscode-wasm).
+// Commands: builtins (cd, pwd, clear, help, exit), coreutils (ls, cat, mkdir, ... from wasm/coreutils.wasm), wasm2wat,
+// wat2wasm and any .wasm file in the workspace (`./lo.wasm compile in.lo > out.wasm`). `> file` redirects the output.
 const vscode = require("vscode");
 
 const COREUTILS_FS = new Set("basenc cat comm cp dir expand head ls mkdir mv realpath rm rmdir tail touch unexpand unlink vdir wc".split(" "));
@@ -72,7 +70,6 @@ class Shell {
     }
 
     async exec(tokens) {
-        // output redirection: `cmd args > file`
         let out, redirectPath;
         const gt = tokens.indexOf(">");
         if (gt !== -1) {
@@ -104,7 +101,7 @@ class Shell {
         return 127;
     }
 
-    /** wasm2wat / wat2wasm via wabt.js (provided by the wasm-viewer extension). Output: `-o file`, `> file`, or stdout (text only). */
+    /** wasm2wat and wat2wasm through the wasm-viewer extension. Writes to `-o file`, `> file` or stdout (text only). */
     async wabtTool(cmd, args, redirectPath) {
         let input, output;
         for (let i = 0; i < args.length; i++) {
@@ -156,10 +153,7 @@ class Shell {
         return (await (await this.wasm.createProcess("coreutils", module, options)).run());
     }
 
-    /**
-     * Programs get the *current directory* mounted at `/` (like the LO extension does), so relative paths such as
-     * `compile main.lo` work. `> file` is handled by capturing stdout and writing it with the workspace fs.
-     */
+    /** Mounts the current directory at `/` for the program, so relative paths work. `> file` writes the captured stdout. */
     async runWasm(file, args, redirectPath) {
         const uri = this.toUri(posixJoin(this.cwd, file));
         const cwdUri = this.toUri(this.cwd);
@@ -212,7 +206,6 @@ exports.activate = async (context) => {
     };
 
     context.subscriptions.push(
-        // entry in the terminal "+" dropdown / default profile
         vscode.window.registerTerminalProfileProvider("lo-shell.shell", {
             provideTerminalProfile() {
                 const { shell, pty } = create();
@@ -229,13 +222,11 @@ exports.activate = async (context) => {
         }),
     );
 
-    // Called by src/main.js when the terminal panel was restored (visible) from the saved UI state: without a pty host
-    // VS Code leaves it blank, so create a shell, but only if there is none.
+    // Called by src/main.js for a terminal panel restored as open.
     context.subscriptions.push(vscode.commands.registerCommand("lo-shell.ensure", () => {
         if (vscode.window.terminals.length === 0) vscode.commands.executeCommand("lo-shell.new");
     }));
     context.subscriptions.push(vscode.commands.registerCommand("lo-shell.focus", () => {
-        // show(false) opens the panel if it is hidden and moves focus into the terminal
         (vscode.window.activeTerminal ?? vscode.window.terminals[0])?.show(false);
     }));
 };
