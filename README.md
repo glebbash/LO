@@ -64,16 +64,19 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 2️⃣ Using wasmtime
 
 - Install [wasmtime](https://github.com/bytecodealliance/wasmtime)
+- Download `lo.wasm` from this repo to your project's folder
 - Compiling files: `wasmtime --dir=. lo.wasm compile <input>.lo > <output>.wasm`
 - Getting diagnostics (in json format): `wasmtime --dir=. lo.wasm inspect <input>.lo`
 
 ---
 
-3️⃣ Using Node.js (also works with Deno)
+3️⃣ Using `lo.js`
 
-- Install [Node.js 24+](https://nodejs.org/)
+- Install any Node.js 24 compatible runtime (Deno and Bun should work)
+- Download `lo.js` from this repo to your project's folder, mark it as executable
 - Compiling files: `./lo.js compile <input>.lo > <output>.wasm`
 - Compiling & running files: `./lo.js run <input>.lo`
+- For more info commands run `./lo.js` and check the usage or read it's contents
 
 ---
 
