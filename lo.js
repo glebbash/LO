@@ -47,15 +47,21 @@ async function main(/** @type {string[]} */ argv) {
     let [command, ...rest] = argv;
 
     if (command === "build" || command === "b") {
-        const output = await runCapturingStdout(COMPILER_PATH, [
+        const output = await runWASIAndGetStdout(COMPILER_PATH, [
             "lo",
             "compile",
             "src/_cli.lo",
         ]);
-        if (output === null) return;
+        if (output === null) {
+            return;
+        }
+
         fs.writeFileSync(COMPILER_PATH, output);
 
-        if (rest.length === 0) return;
+        if (rest.length === 0) {
+            return;
+        }
+
         [command, ...rest] = rest; // continue with the next command
     }
 
@@ -64,7 +70,7 @@ async function main(/** @type {string[]} */ argv) {
         const compilerArgs = sep === -1 ? rest : rest.slice(0, sep);
         const programArgs = sep === -1 ? [] : rest.slice(sep + 1);
 
-        const program = await runCapturingStdout(COMPILER_PATH, [
+        const program = await runWASIAndGetStdout(COMPILER_PATH, [
             "lo",
             "compile",
             ...compilerArgs,
@@ -219,7 +225,7 @@ async function debugWasi(/** @type {string} */ wasmPath) {
     });
 }
 
-async function runCapturingStdout(
+async function runWASIAndGetStdout(
     /** @type {string} */ wasmPath,
     /** @type {string[]} */ args,
 ) {
@@ -241,12 +247,18 @@ async function askAndDownloadCompiler() {
     );
 
     const stdin = process.stdin;
-    if (stdin.isTTY) stdin.setRawMode(true);
+    if (stdin.isTTY) {
+        stdin.setRawMode(true);
+    }
+
     const key = await new Promise((resolve) => {
         stdin.once("data", resolve);
         stdin.once("end", () => resolve(null));
     });
-    if (stdin.isTTY) stdin.setRawMode(false);
+    if (stdin.isTTY) {
+        stdin.setRawMode(false);
+    }
+
     stdin.pause();
     process.stderr.write("\n");
 

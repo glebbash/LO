@@ -108,14 +108,6 @@ export async function runSampleTests(
         assert.strictEqual(program.main(), 120);
     });
 
-    it("compiles include-embedded.lo", async () => {
-        const output = await compile("./test/include-embedded.lo");
-
-        const program = await loadWasm(output);
-
-        assert.strictEqual(program.main(), 8);
-    });
-
     it("compiles else-if.lo", async () => {
         const output = await compile("./test/else-if.lo");
 
@@ -260,7 +252,7 @@ export async function runSampleTests(
 
         const wasi = await createWASI({});
         const wasm = await WebAssembly.compile(output);
-        await WebAssembly.instantiate(wasm, wasi.getImportObject());
+        await WebAssembly.instantiate(wasm, { ...wasi.getImportObject() });
     });
 
     it("compiles string-pooling.lo", async () => {
@@ -513,6 +505,23 @@ export async function runSampleTests(
         );
 
         assert.strictEqual(exports.main(), 0);
+    });
+
+    it("compiles include-embedded.lo", async () => {
+        const program = await compile("./test/include-embedded.lo");
+
+        const stdout = new WASI.VirtualFD();
+        await runWASI(program, { stdout });
+        const output = stdout.flushAndReadUtf8();
+
+        assert.strictEqual(
+            output,
+            m`
+            Hello
+            World
+
+            `,
+        );
     });
 
     it("compiles lo-cli-slim.lo (the compiler itself) into a working compiler", async () => {

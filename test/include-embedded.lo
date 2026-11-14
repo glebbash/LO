@@ -1,9 +1,14 @@
 // `lo:` includes read from the sources embedded in the compiler, their own
 // relative includes (ie `./std.lo` in `lo:lib/str_cutter.lo`) stay in the embedded set
 
+@include("lo:lib/cli.lo")
 @include("lo:lib/str_cutter.lo")
 
-export fn main(): u32 {
-    let s = String::from_str("embedded")
-    return s.as_str().len
+fn main() {
+    let parts = StrCutter::new("Hello World")
+    while parts.rest.len > 0 {
+        parts = parts.cut_at(" ")
+
+        println(parts.piece)
+    }
 }
