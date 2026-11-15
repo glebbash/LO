@@ -1,8 +1,8 @@
 // NOTE: this file is the project entry point. '_' prefix is used to
 //   force it to the top of `ls` output
 
-@include("../lib/args.lo")
-@include("../lib/wasi.lo")
+@include("../args.lo")
+@include("../wasi.lo")
 
 @include("./common.lo")
 @include("./lexer.lo")
@@ -13,9 +13,8 @@
 
 @use_memory(min_pages = 20, exported)
 
-inline let ASSETS_SRC = @embed_files("../src")
-inline let ASSETS_LIB = @embed_files("../lib")
-inline let ASSETS_TEST = @embed_files("../test")
+inline let ASSETS_LIB = @embed_files("../../lib")
+inline let ASSETS_TEST = @embed_files("../../test")
 
 inline let USAGE = "Usage:
   lo compile <input.lo> // compiles source file to a WASM binary
@@ -31,7 +30,6 @@ export fn _start() {
     let registry = Registry::new()
     defer registry.free()
 
-    add_embedded_folder!(registry, ASSETS_SRC, "src")
     add_embedded_folder!(registry, ASSETS_LIB, "lib")
     add_embedded_folder!(registry, ASSETS_TEST, "test")
 

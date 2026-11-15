@@ -30,7 +30,7 @@ And the actual docs for the compiler are in the [docs](./extras/docs.md).
 
 ## 👀 Examples
 
-Check out sample `.lo` programs including standard library and self-hosted compiler in the [src](./src/), [lib](./lib/) and [test](./test/) folders.
+Check out sample `.lo` programs including standard library and self-hosted compiler in the [lib](./lib/) (the compiler is in [lib/lo](./lib/lo/)) and [test](./test/) folders.
 
 Here are some of them with syntax highlighting from the [LO VS Code extension](#vscode-extension):
 

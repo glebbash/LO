@@ -1,0 +1,28 @@
+{
+    "name": "lo-playground",
+    "private": true,
+    "type": "module",
+    "description": "Self-hosted vscode.dev-style playground for LO (static site, deployed to Cloudflare Pages)",
+    "scripts": {
+        "build": "node scripts.js build",
+        "serve": "node scripts.js serve"
+    },
+    "config": {
+        "vscodeWeb": "0.30.3",
+        "extensions": [
+            "glebbash.lo",
+            "ms-vscode.wasm-wasi-core",
+            "GitHub.github-vscode-theme"
+        ],
+        "wabt": "1.0.39",
+        "coreutilsFrom": "ms-vscode.webshell",
+        "defaultTheme": "GitHub Dark Default",
+        "wasm4": "2.7.1",
+        "isomorphicGit": "1.44.14",
+        "bufferPackages": {
+            "buffer": "6.0.3",
+            "base64-js": "1.5.1",
+            "ieee754": "1.2.1"
+        }
+    }
+}

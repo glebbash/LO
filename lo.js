@@ -50,7 +50,7 @@ async function main(/** @type {string[]} */ argv) {
         const output = await runWASIAndGetStdout(COMPILER_PATH, [
             "lo",
             "compile",
-            "src/_cli.lo",
+            "lib/lo/_cli.lo",
         ]);
         if (output === null) {
             return;

@@ -1,0 +1,57 @@
+{
+    "name": "wasm-viewer",
+    "displayName": "WASM Viewer",
+    "publisher": "lo-playground",
+    "version": "0.0.1",
+    "description": "Opens .wasm files as WAT text, WAT language support, wasm2wat / wat2wasm. Powered by wabt.js (Apache-2.0).",
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "browser": "./extension.js",
+    "activationEvents": [
+        "onCustomEditor:wasmViewer.wat",
+        "onLanguage:wat"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
+    "contributes": {
+        "languages": [
+            {
+                "id": "wat",
+                "aliases": [
+                    "WebAssembly Text",
+                    "WAT"
+                ],
+                "extensions": [
+                    ".wat",
+                    ".wast"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "wat",
+                "scopeName": "source.wat",
+                "path": "./syntaxes/wat.tmLanguage.json"
+            }
+        ],
+        "customEditors": [
+            {
+                "viewType": "wasmViewer.wat",
+                "displayName": "WebAssembly (as WAT)",
+                "selector": [
+                    {
+                        "filenamePattern": "*.wasm"
+                    }
+                ],
+                "priority": "default"
+            }
+        ]
+    }
+}

@@ -1,0 +1,138 @@
+{
+    "name": "wasm4",
+    "displayName": "WASM-4",
+    "publisher": "lo-playground",
+    "version": "0.0.1",
+    "description": "Runs LO programs for the WASM-4 fantasy console in an editor tab, rebuilds them when a file is saved and exports a standalone HTML page.",
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "browser": "./extension.js",
+    "extensionDependencies": [
+        "ms-vscode.wasm-wasi-core"
+    ],
+    "activationEvents": [
+        "onStartupFinished",
+        "onWebviewPanel:wasm4"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
+    "contributes": {
+        "commands": [
+            {
+                "command": "wasm4.run",
+                "title": "WASM-4: Run current file",
+                "icon": "$(game)"
+            },
+            {
+                "command": "wasm4.exportHtml",
+                "title": "WASM-4: Export HTML"
+            },
+            {
+                "command": "wasm4.reload",
+                "title": "WASM-4: Rebuild and restart the game",
+                "icon": "$(debug-rerun)"
+            },
+            {
+                "command": "wasm4.toggleReloadOnSave",
+                "title": "WASM-4: Toggle reload on save"
+            },
+            {
+                "command": "wasm4.reloadOnSaveIsOn",
+                "title": "WASM-4: Reload on save is on (click to turn it off)",
+                "icon": "$(sync)"
+            },
+            {
+                "command": "wasm4.reloadOnSaveIsOff",
+                "title": "WASM-4: Reload on save is off (click to turn it on)",
+                "icon": "$(sync-ignored)"
+            },
+            {
+                "command": "wasm4.toggleHotSwap",
+                "title": "WASM-4: Toggle hot swap"
+            },
+            {
+                "command": "wasm4.hotSwapIsOn",
+                "title": "WASM-4: Hot swap is on (click to turn it off)",
+                "icon": "$(beaker)"
+            },
+            {
+                "command": "wasm4.hotSwapIsOff",
+                "title": "WASM-4: Hot swap is off (click to turn it on)",
+                "icon": "$(beaker-stop)"
+            }
+        ],
+        "menus": {
+            "editor/title": [
+                {
+                    "command": "wasm4.run",
+                    "when": "wasm4.isCart",
+                    "group": "navigation"
+                },
+                {
+                    "command": "wasm4.reload",
+                    "when": "activeWebviewPanelId == 'wasm4'",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "wasm4.reloadOnSaveIsOn",
+                    "when": "activeWebviewPanelId == 'wasm4' && config.wasm4.rebuildOnSave",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "wasm4.reloadOnSaveIsOff",
+                    "when": "activeWebviewPanelId == 'wasm4' && !config.wasm4.rebuildOnSave",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "wasm4.hotSwapIsOn",
+                    "when": "activeWebviewPanelId == 'wasm4' && config.wasm4.hotSwap",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "wasm4.hotSwapIsOff",
+                    "when": "activeWebviewPanelId == 'wasm4' && !config.wasm4.hotSwap",
+                    "group": "navigation@3"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "wasm4.reloadOnSaveIsOn",
+                    "when": "false"
+                },
+                {
+                    "command": "wasm4.reloadOnSaveIsOff",
+                    "when": "false"
+                },
+                {
+                    "command": "wasm4.hotSwapIsOn",
+                    "when": "false"
+                },
+                {
+                    "command": "wasm4.hotSwapIsOff",
+                    "when": "false"
+                }
+            ]
+        },
+        "configuration": {
+            "title": "WASM-4",
+            "properties": {
+                "wasm4.rebuildOnSave": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Rebuild and reload the running game when a .lo file is saved."
+                },
+                "wasm4.hotSwap": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Keep the memory of the game when it is reloaded (hot swap). Off restarts the game."
+                }
+            }
+        }
+    }
+}

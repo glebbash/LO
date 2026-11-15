@@ -1,7 +1,7 @@
-@include("../lib/std.lo", with_extern)
-@include("../lib/fs.lo", with_extern)
-@include("../lib/wasi.lo")
-@include("../lib/print.lo")
+@include("../std.lo", with_extern)
+@include("../fs.lo", with_extern)
+@include("../wasi.lo")
+@include("../print.lo")
 
 @include("./registry.lo")
 

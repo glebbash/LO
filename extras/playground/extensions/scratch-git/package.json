@@ -1,0 +1,148 @@
+{
+    "name": "scratch-git",
+    "displayName": "Scratch Git",
+    "publisher": "lo-playground",
+    "version": "0.0.1",
+    "description": "Local git for the scratch workspace: changes, diffs, commit, discard and history. Powered by isomorphic-git (MIT).",
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.90.0"
+    },
+    "browser": "./extension.js",
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "capabilities": {
+        "virtualWorkspaces": true,
+        "untrustedWorkspaces": {
+            "supported": true
+        }
+    },
+    "extensionDependencies": [
+        "lo-playground.scratch-fs"
+    ],
+    "contributes": {
+        "commands": [
+            {
+                "command": "scratchGit.commit",
+                "title": "Scratch Git: Commit",
+                "icon": "$(check)"
+            },
+            {
+                "command": "scratchGit.refresh",
+                "title": "Scratch Git: Refresh",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "scratchGit.history",
+                "title": "Scratch Git: History",
+                "icon": "$(history)"
+            },
+            {
+                "command": "scratchGit.stage",
+                "title": "Stage Changes",
+                "icon": "$(add)"
+            },
+            {
+                "command": "scratchGit.stageAll",
+                "title": "Stage All Changes",
+                "icon": "$(add)"
+            },
+            {
+                "command": "scratchGit.unstage",
+                "title": "Unstage Changes",
+                "icon": "$(remove)"
+            },
+            {
+                "command": "scratchGit.unstageAll",
+                "title": "Unstage All Changes",
+                "icon": "$(remove)"
+            },
+            {
+                "command": "scratchGit.discard",
+                "title": "Discard Changes",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "scratchGit.discardAll",
+                "title": "Discard All Changes",
+                "icon": "$(discard)"
+            },
+            {
+                "command": "scratchGit.openChange",
+                "title": "Open Change"
+            }
+        ],
+        "menus": {
+            "commandPalette": [
+                {
+                    "command": "scratchGit.stage",
+                    "when": "false"
+                },
+                {
+                    "command": "scratchGit.unstage",
+                    "when": "false"
+                },
+                {
+                    "command": "scratchGit.discard",
+                    "when": "false"
+                },
+                {
+                    "command": "scratchGit.openChange",
+                    "when": "false"
+                }
+            ],
+            "scm/title": [
+                {
+                    "command": "scratchGit.commit",
+                    "group": "navigation@1",
+                    "when": "scmProvider == scratch-git"
+                },
+                {
+                    "command": "scratchGit.history",
+                    "group": "navigation@2",
+                    "when": "scmProvider == scratch-git"
+                },
+                {
+                    "command": "scratchGit.refresh",
+                    "group": "navigation@3",
+                    "when": "scmProvider == scratch-git"
+                }
+            ],
+            "scm/resourceGroup/context": [
+                {
+                    "command": "scratchGit.unstageAll",
+                    "group": "inline",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == staged"
+                },
+                {
+                    "command": "scratchGit.discardAll",
+                    "group": "inline@1",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == changes"
+                },
+                {
+                    "command": "scratchGit.stageAll",
+                    "group": "inline@2",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == changes"
+                }
+            ],
+            "scm/resourceState/context": [
+                {
+                    "command": "scratchGit.unstage",
+                    "group": "inline",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == staged"
+                },
+                {
+                    "command": "scratchGit.discard",
+                    "group": "inline@1",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == changes"
+                },
+                {
+                    "command": "scratchGit.stage",
+                    "group": "inline@2",
+                    "when": "scmProvider == scratch-git && scmResourceGroup == changes"
+                }
+            ]
+        }
+    }
+}
