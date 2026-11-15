@@ -170,7 +170,7 @@ function zip(files) {
 }
 const toBase64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 
-/** Downloads lo.wasm and lets it unpack its bundled src/, lib/ and test/ into the workspace. */
+/** Downloads lo.wasm and lets it unpack its bundled lib/ and test/ into the workspace. */
 async function seed(fs) {
     const root = vscode.Uri.from({ scheme: "scratch", path: ROOT });
     await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Setting up Scratch FS" }, async (progress) => {

@@ -30,9 +30,15 @@ function toBase64(bytes) {
     return btoa(s);
 }
 
-/** Stands in for the `w4 watch` server of the developer runtime: it serves the cart and sends the reload messages. */
-const devServerShim = (cartBase64) => `
+/**
+ * Stands in for the `w4 watch` server of the developer runtime: it serves the cart, sends the reload messages and passes
+ * the `trace` output (which the runtime sends to that server) on to the extension. The source file is kept in the state
+ * of the page, VS Code hands it back when it restores the panel after a reload.
+ */
+const devServerShim = (cartBase64, source) => `
 (() => {
+    const api = acquireVsCodeApi();
+    api.setState({ source: ${JSON.stringify(source)} });
     let cart = Uint8Array.from(atob("${cartBase64}"), (c) => c.charCodeAt(0));
     let socket;
     const realFetch = window.fetch.bind(window);
@@ -42,21 +48,31 @@ const devServerShim = (cartBase64) => `
     const RealWebSocket = window.WebSocket;
     window.WebSocket = function (...args) {
         if (socket) return new RealWebSocket(...args);
-        socket = Object.assign(new EventTarget(), { send() {}, close() {} });
+        socket = Object.assign(new EventTarget(), { readyState: 1, send: (text) => api.postMessage({ type: "trace", text: String(text) }), close() {} });
         return socket;
     };
     window.addEventListener("message", (e) => {
         if (e.data?.type !== "cart") return;
+        api.setState({ source: e.data.source });
         cart = new Uint8Array(e.data.cart);
         socket?.dispatchEvent(new MessageEvent("message", { data: e.data.hot ? "hotswap" : "reload" }));
     });
 })();`;
 
 exports.activate = (context) => {
-    const output = vscode.window.createOutputChannel("WASM-4");
+    const output = vscode.window.createOutputChannel("WASM-4", "log");
+    // Lines look like the ones of a log channel, `time [level] text`. The channel is plain, so that nothing is added to
+    // them, and has the `log` language for the colors (the built-in log grammar colors the time and the level).
+    const pad = (n, width = 2) => String(n).padStart(width, "0");
+    const log = (level, text) => {
+        const d = new Date();
+        const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+        output.appendLine(`${stamp} [${level}] ${text}`);
+    };
     const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     const vendorCache = new Map();
     let panel;
+    let gameLoaded = false; // the page of the panel has the runtime in it
     let entry; // uri of the .lo file that is built
     let building = false;
     let rebuildAgain = false;
@@ -129,17 +145,16 @@ exports.activate = (context) => {
 
     async function build(uri) {
         const started = Date.now();
-        output.appendLine(`Building ${vscode.workspace.asRelativePath(uri, false)}`);
         try {
             const cart = await compile(uri);
-            output.appendLine(`Built ${cart.length} bytes in ${Date.now() - started} ms`);
+            log("info", `Built ${vscode.workspace.asRelativePath(uri, false)}: ${cart.length} bytes in ${Date.now() - started} ms`);
             status.text = "$(check) WASM-4";
             status.tooltip = `Built ${new Date().toLocaleTimeString()}`;
             status.backgroundColor = undefined;
             status.show();
             return cart;
         } catch (e) {
-            output.appendLine(String(e?.message ?? e));
+            log("error", `Build of ${vscode.workspace.asRelativePath(uri, false)} failed:\n${String(e?.message ?? e).trim()}`);
             status.text = "$(error) WASM-4";
             status.tooltip = "The build failed, see the WASM-4 output";
             status.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
@@ -149,7 +164,7 @@ exports.activate = (context) => {
         }
     }
 
-    async function webviewHtml(cart) {
+    async function webviewHtml(cart, source) {
         const [css, js] = await Promise.all([vendorText("dev/wasm4.css"), vendorText("dev/wasm4.js")]);
         return `<!doctype html>
 <html lang="en">
@@ -162,11 +177,49 @@ body { padding: 0; }</style>
 </head>
 <body>
 <div id="devtools"></div>
-<script>${escapeJs(devServerShim(toBase64(cart)))}</script>
+<script>${escapeJs(devServerShim(toBase64(cart), source))}</script>
 <script>${escapeJs(stripSourceMap(js))}</script>
 <wasm4-app></wasm4-app>
 </body>
 </html>`;
+    }
+
+    /** Shows a cart in the panel: the first one loads the page, later ones are sent to the running game. */
+    async function showCart(cart, hot) {
+        if (!gameLoaded) {
+            gameLoaded = true;
+            panel.webview.html = await webviewHtml(cart, entry.toString());
+        } else {
+            panel.webview.postMessage({ type: "cart", cart, hot, source: entry.toString() });
+        }
+    }
+
+    /** Creates the panel to the left of the editor that has the source. */
+    async function createPanel(uri) {
+        const column = vscode.window.activeTextEditor?.viewColumn;
+        let viewColumn = vscode.ViewColumn.Beside;
+        if (column && column > 1) {
+            viewColumn = column - 1;
+        } else if (column) {
+            await vscode.commands.executeCommand("workbench.action.newGroupLeft");
+            viewColumn = vscode.ViewColumn.Active;
+        }
+        const created = vscode.window.createWebviewPanel(
+            "wasm4",
+            `WASM-4: ${uri.path.split("/").pop()}`,
+            { viewColumn, preserveFocus: !column },
+            { enableScripts: true, retainContextWhenHidden: true },
+        );
+        // The new group has the focus, give it back to the editor.
+        if (column) await vscode.commands.executeCommand(column > 1 ? "workbench.action.focusNextGroup" : "workbench.action.focusRightGroup");
+        return created;
+    }
+
+    function adopt(created) {
+        panel = created;
+        gameLoaded = false;
+        panel.onDidDispose(() => (panel = undefined), null, context.subscriptions);
+        panel.webview.onDidReceiveMessage((m) => m?.type === "trace" && log("trace", m.text), null, context.subscriptions);
     }
 
     async function run(uri) {
@@ -175,19 +228,9 @@ body { padding: 0; }</style>
             vscode.window.showErrorMessage("WASM-4: the build failed", "Show output").then((a) => a && output.show());
             throw e;
         });
-        if (panel) {
-            panel.title = `WASM-4: ${uri.path.split("/").pop()}`;
-            panel.webview.postMessage({ type: "cart", cart, hot: false });
-            return;
-        }
-        panel = vscode.window.createWebviewPanel(
-            "wasm4",
-            `WASM-4: ${uri.path.split("/").pop()}`,
-            { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
-            { enableScripts: true, retainContextWhenHidden: true },
-        );
-        panel.onDidDispose(() => (panel = undefined), null, context.subscriptions);
-        panel.webview.html = await webviewHtml(cart);
+        if (!panel) adopt(await createPanel(uri));
+        panel.title = `WASM-4: ${uri.path.split("/").pop()}`;
+        await showCart(cart, false);
     }
 
     /** Rebuilds the running game. It is hot swapped when the setting is on, unless `full` asks for a restart. */
@@ -200,11 +243,7 @@ body { padding: 0; }</style>
         building = true;
         try {
             const cart = await build(entry);
-            panel?.webview.postMessage({
-                type: "cart",
-                cart,
-                hot: !full && vscode.workspace.getConfiguration("wasm4").get("hotSwap", false),
-            });
+            if (panel) await showCart(cart, !full && vscode.workspace.getConfiguration("wasm4").get("hotSwap", false));
         } catch {
             // the error is in the output
         } finally {
@@ -299,6 +338,24 @@ body { padding: 0; }</style>
             if (!panel || !entry || !isLo(doc.uri) || !vscode.workspace.getConfiguration("wasm4").get("rebuildOnSave", true)) return;
             clearTimeout(rebuildTimer);
             rebuildTimer = setTimeout(rebuild, 150);
+        }),
+        // After a reload of the page VS Code brings the panel back (in its editor group) and asks for its content.
+        vscode.window.registerWebviewPanelSerializer("wasm4", {
+            async deserializeWebviewPanel(restored, state) {
+                restored.webview.options = { enableScripts: true };
+                adopt(restored);
+                if (!state?.source) {
+                    restored.webview.html = "<p>Run a WASM-4 game to fill this tab.</p>";
+                    return;
+                }
+                entry = vscode.Uri.parse(state.source);
+                restored.title = `WASM-4: ${entry.path.split("/").pop()}`;
+                try {
+                    await showCart(await build(entry), false);
+                } catch {
+                    restored.webview.html = "<p>The build failed, see the WASM-4 output.</p>";
+                }
+            },
         }),
         vscode.window.onDidChangeActiveTextEditor(updateContext),
         vscode.workspace.onDidChangeTextDocument((e) => e.document === vscode.window.activeTextEditor?.document && updateContext()),

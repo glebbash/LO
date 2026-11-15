@@ -8,7 +8,7 @@ If you'd just rather learn from examples:
 
 - [test](../test/) - small test/showcase programs for all of the language features
 - [lib](../lib/) - standard library
-- [src](../src/) - the compiler itself
+- [lib/lo](../lib/lo/) - the compiler itself
 
 <br/>
 
@@ -719,7 +719,7 @@ fn main() {
 - A file is included once, however many times and through whichever relative paths it's referenced, so there's no need for include guards like in C.
 - `with_extern` re-exports an include: files that include this one see its definitions too. `lib/cli.lo` uses it so that including `cli.lo` alone provides `std.lo`, `wasi.lo` and `print.lo`.
 - `alias = "name"` prefixes every included definition with `name::`. Method calls don't apply the prefix, so methods of `math::Point` are called as `math::Point::method(p)`.
-- Paths starting with `lo:` include a file from the sources embedded in the compiler: `lo:lib/<file>`, `lo:src/<file>` and `lo:test/<file>`, ie `@include("lo:lib/cli.lo")`. Relative includes inside such files resolve within the embedded set too, so no files need to exist on disk.
+- Paths starting with `lo:` include a file from the sources embedded in the compiler: `lo:lib/<file>` and `lo:test/<file>`, ie `@include("lo:lib/cli.lo")`. Relative includes inside such files resolve within the embedded set too, so no files need to exist on disk.
 - Defining a name that an included file already defines is an error. There is no privacy: every top-level definition is visible to includers.
 
 ## 🧰 Intrinsics
@@ -920,18 +920,18 @@ Prints every file of the program, formatted, each under a `//// file: <path>` he
 
 | Path                       | Contents                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------- |
-| `src/`                     | the compiler, written in LO, with `src/_cli.lo` as the entry point                          |
+| `lib/lo/`                  | the compiler, written in LO, with `lib/lo/_cli.lo` as the entry point                       |
 | `lib/`                     | the standard library                                                                        |
 | `test/`                    | test programs, with diagnostics checks in `compile-errors/` and larger programs in `demos/` |
 | `extras/initial-compiler/` | the bootstrap compiler, written in Rust                                                     |
 | `test/_runners/`           | compiler test suite and custom WASI implementation to speed thing up                        |
-| `lo.wasm`                  | the compiler binary, built from `src/`, it has `src/`, `lib/` and `test/` baked in          |
+| `lo.wasm`                  | the compiler binary, built from `lib/lo/`, it has `lib/` and `test/` baked in           |
 | `lo.js`                    | build, test and run helper for Node.js 24+                                                  |
 | `extras/vscode-ext/`       | the VS Code extension                                                                       |
 
 ### Building
 
-The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a new `lo.wasm`. The binary embeds its own sources, libraries and tests, so any `lo.wasm` can be unpacked and rebuilt (the result is byte-identical for an unmodified checkout).
+The compiler builds itself: the current `lo.wasm` compiles `lib/lo/_cli.lo` into a new `lo.wasm`. The binary embeds its own sources and tests, so any `lo.wasm` can be unpacked and rebuilt (the result is byte-identical for an unmodified checkout).
 
 ```bash
 ./lo.js build      # rebuild lo.wasm
@@ -940,7 +940,7 @@ The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a 
 
 ### Bootstrap compiler
 
-`extras/initial-compiler/` holds the original Rust implementation. `./lo.js test` checks that both compilers produce the same binaries and diagnostics. The compiler itself is compared through `test/lo-cli-slim.lo`, a copy of `src/_cli.lo` without the baked in sources, as the Rust compiler doesn't support `@embed_files`.
+`extras/initial-compiler/` holds the original Rust implementation. `./lo.js test` checks that both compilers produce the same binaries and diagnostics. The compiler itself is compared through `test/lo-cli-slim.lo`, a copy of `lib/lo/_cli.lo` without the baked in sources, as the Rust compiler doesn't support `@embed_files`.
 
 - Install [rustup](https://www.rust-lang.org/tools/install). The nightly toolchain and the `wasm32-unknown-unknown` target are pinned in `extras/initial-compiler/rust-toolchain.toml`. There's also a DevContainer setup in `extras/initial-compiler/.devcontainer`.
 - Run `cd extras/initial-compiler && ./build.sh`, which writes `extras/initial-compiler/lo.wasm`.
@@ -962,7 +962,7 @@ The compiler builds itself: the current `lo.wasm` compiles `src/_cli.lo` into a 
 `lo.wasm` contains the sources, the standard library and the tests. To get them without cloning the repository:
 
 ```bash
-./lo.js eject # writes src/, lib/ and test/ to the current directory, never overwrites files
+./lo.js eject # writes lib/ and test/ to the current directory, never overwrites files
 ./lo.js test  # now the tests can run (they are not available before unpacking)
 ```
 

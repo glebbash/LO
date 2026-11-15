@@ -13,7 +13,8 @@
         "ms-vscode.wasm-wasi-core"
     ],
     "activationEvents": [
-        "onStartupFinished"
+        "onStartupFinished",
+        "onWebviewPanel:wasm4"
     ],
     "capabilities": {
         "virtualWorkspaces": true,
