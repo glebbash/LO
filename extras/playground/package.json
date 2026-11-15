@@ -17,6 +17,12 @@
         "wabt": "1.0.39",
         "coreutilsFrom": "ms-vscode.webshell",
         "defaultTheme": "GitHub Dark Default",
-        "wasm4": "2.7.1"
+        "wasm4": "2.7.1",
+        "isomorphicGit": "1.44.14",
+        "bufferPackages": {
+            "buffer": "6.0.3",
+            "base64-js": "1.5.1",
+            "ieee754": "1.2.1"
+        }
     }
 }

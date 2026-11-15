@@ -1,5 +1,5 @@
 // A small shell for the terminal view, modeled after ms-vscode.webshell (MIT, microsoft/vscode-wasm).
-// Commands: builtins (cd, pwd, clear, help, exit), coreutils (ls, cat, mkdir, ... from wasm/coreutils.wasm), wasm2wat,
+// Commands: builtins (cd, pwd, clear, help, exit, git), coreutils (ls, cat, mkdir, ... from wasm/coreutils.wasm), wasm2wat,
 // wat2wasm and any .wasm file in the workspace (`./lo.wasm compile in.lo > out.wasm`). `> file` redirects the output.
 const vscode = require("vscode");
 
@@ -87,9 +87,10 @@ class Shell {
             case "pwd": await pty.write(`${this.cwd}\r\n`); return 0;
             case "clear": await pty.write("\x1b[2J\x1b[3J\x1b[H"); return 0;
             case "help":
-                await pty.write("builtins: cd pwd clear help exit\r\ncoreutils: " + [...COREUTILS_FS, ...COREUTILS_NOFS].sort().join(" ") + "\r\nwasm tools: wasm2wat <in.wasm> [-o out.wat]  wat2wasm <in.wat> [-o out.wasm]\r\nprograms: ./file.wasm args...  |  run file.wasm args...   (supports > file)\r\n");
+                await pty.write("builtins: cd pwd clear help exit git\r\ngit: status  add <path>...  restore [--staged] <path>...  reset <path>...  commit [-a] -m <message>  log\r\ncoreutils: " + [...COREUTILS_FS, ...COREUTILS_NOFS].sort().join(" ") + "\r\nwasm tools: wasm2wat <in.wasm> [-o out.wat]  wat2wasm <in.wat> [-o out.wasm]\r\nprograms: ./file.wasm args...  |  run file.wasm args...   (supports > file)\r\n");
                 return 0;
             case "cd": return this.cd(args);
+            case "git": return this.git(args);
             case "wasm2wat":
             case "wat2wasm": return this.wabtTool(cmd, args, redirectPath);
             case "run": [cmd, ...args] = args; if (!cmd) { await pty.write("usage: run <file.wasm> [args]\r\n"); return 1; }
@@ -99,6 +100,76 @@ class Shell {
         if (cmd.endsWith(".wasm")) return this.runWasm(cmd, args, redirectPath);
         await pty.write(`lo-shell: ${cmd}: command not found\r\n`);
         return 127;
+    }
+
+    /** git status, add, restore, reset, commit and log through the scratch-git extension. */
+    async git([sub, ...args]) {
+        const { pty } = this;
+        const say = (text) => pty.write(text.replace(/\r?\n/g, "\r\n"));
+        const fatal = async (message) => { await say(`fatal: ${message}\n`); return 128; };
+        if (!sub) { await say("usage: git <status|add|restore|reset|commit|log> ...\n"); return 1; }
+        if (!["status", "add", "restore", "reset", "commit", "log"].includes(sub)) { await say(`git: '${sub}' is not a git command.\n`); return 1; }
+
+        // Paths become relative to the workspace root, where the repository is.
+        const specs = (paths) => paths.map((p) => {
+            const abs = posixJoin(this.cwd, p);
+            if (abs !== "/workspace" && !abs.startsWith("/workspace/")) throw new Error(`${p}: not inside the workspace`);
+            return abs.slice("/workspace/".length);
+        });
+        const git = await vscode.extensions.getExtension("lo-playground.scratch-git").activate();
+        try {
+            switch (sub) {
+                case "status": {
+                    const { staged, unstaged } = await git.status();
+                    const label = { added: "new file:   ", modified: "modified:   ", deleted: "deleted:    " };
+                    const section = (title, lines) => lines.length ? `${title}\n${lines.map((l) => `        ${l}`).join("\n")}\n\n` : "";
+                    const text = section("Changes to be committed:", staged.map((c) => label[c.status] + c.rel))
+                        + section("Changes not staged for commit:", unstaged.filter((c) => c.status !== "untracked").map((c) => label[c.status] + c.rel))
+                        + section("Untracked files:", unstaged.filter((c) => c.status === "untracked").map((c) => c.rel));
+                    await say("On branch main\n" + (text || "nothing to commit, working tree clean\n"));
+                    return 0;
+                }
+                case "add":
+                    if (!args.length) { await say("Nothing specified, nothing added.\n"); return 0; }
+                    await git.add(specs(args));
+                    return 0;
+                case "restore": {
+                    const staged = args.includes("--staged");
+                    const paths = args.filter((a) => a !== "--staged");
+                    if (!paths.length) return fatal("you must specify path(s) to restore");
+                    await (staged ? git.unstage : git.restore)(specs(paths));
+                    return 0;
+                }
+                case "reset": {
+                    const paths = args.filter((a) => a !== "--");
+                    if (!paths.length) return fatal("specify the path(s) to unstage");
+                    await git.unstage(specs(paths));
+                    return 0;
+                }
+                case "commit": {
+                    let all = false, message;
+                    for (let i = 0; i < args.length; i++) {
+                        if (args[i] === "-a") all = true;
+                        else if (args[i] === "-m") message = args[++i];
+                        else if (args[i] === "-am") { all = true; message = args[++i]; }
+                        else return fatal(`unsupported argument '${args[i]}'`);
+                    }
+                    if (!message) { await say("Aborting commit due to empty commit message.\n"); return 1; }
+                    const { oid } = await git.commit(message, all);
+                    await say(`[main ${oid.slice(0, 7)}] ${message}\n`);
+                    return 0;
+                }
+                case "log": {
+                    for (const e of await git.log()) {
+                        await say(`commit ${e.oid}\nAuthor: ${e.commit.author.name} <${e.commit.author.email}>\nDate:   ${new Date(e.commit.author.timestamp * 1000).toLocaleString()}\n\n    ${e.commit.message.trim().split("\n").join("\n    ")}\n\n`);
+                    }
+                    return 0;
+                }
+            }
+        } catch (e) {
+            if (e?.message === "nothing to commit") { await say("nothing to commit\n"); return 1; }
+            return fatal(e?.message ?? String(e));
+        }
     }
 
     /** wasm2wat and wat2wasm through the wasm-viewer extension. Writes to `-o file`, `> file` or stdout (text only). */

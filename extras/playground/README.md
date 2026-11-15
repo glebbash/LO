@@ -1,6 +1,6 @@
 # LO Playground
 
-A vscode.dev-style playground for the LO language that runs entirely in the browser. It is a static site: a VS Code web build with the LO extension, wasm-wasi-core and the GitHub theme preloaded, a persistent scratch workspace (saved in IndexedDB), a shell in the terminal view and a `.wasm` to WAT viewer. More extensions can be installed from Open VSX.
+A vscode.dev-style playground for the LO language that runs entirely in the browser. It is a static site: a VS Code web build with the LO extension, wasm-wasi-core and the GitHub theme preloaded, a persistent scratch workspace (saved in IndexedDB) with local git, a shell in the terminal view and a `.wasm` to WAT viewer. More extensions can be installed from Open VSX.
 
 ## AI Use Disclosure
 
@@ -8,7 +8,7 @@ Most of this folder was AI generated and edited afterwards by hand where needed.
 
 ## Local
 
-Requirements: node 18+, `tar` and `unzip` on `PATH`, and network access. The build downloads the VS Code web build and `wabt` from the npm registry and extensions from `open-vsx.org`. There are no npm dependencies. Downloads are cached in `.cache/`, the output goes to `dist/` (about 100MB).
+Requirements: node 18+, `tar` and `unzip` on `PATH`, and network access. The build downloads the VS Code web build, `wabt` and `isomorphic-git` from the npm registry and extensions from `open-vsx.org`. There are no npm dependencies. Downloads are cached in `.cache/`, the output goes to `dist/` (about 100MB).
 
 ```sh
 npm run build
@@ -22,10 +22,11 @@ Open it as `localhost`, the page needs a secure context.
 
 | Path                      | What                                                                                                                                   |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json` `config`   | Pinned versions (VS Code web build, wabt), the preloaded extensions and the default theme                                              |
+| `package.json` `config`   | Pinned versions (VS Code web build, wabt, isomorphic-git, ...), the preloaded extensions and the default theme                                              |
 | `scripts.js`              | `build` creates `dist/`, `serve [port]` is a static server for it that sends the headers from `public/_headers`                        |
 | `src/`                    | `index.html`, `main.js` (workbench setup), `about.js` (About dialog) and `playground.code-profile` (default profile)                   |
 | `extensions/scratch-fs/`  | The `scratch:` file system, file and text search, first start seeding, workspace zip download                                          |
+| `extensions/scratch-git/` | Local git for the workspace: Source Control view, diffs, commit, discard, history                                                      |
 | `extensions/lo-shell/`    | Shell in the terminal view                                                                                                             |
 | `extensions/wasm4/`       | Runs WASM-4 games written in LO in an editor tab, rebuilds them on save, exports a standalone HTML page                                |
 | `extensions/wasm-viewer/` | Opens `.wasm` files as WAT, WAT highlighting, `wasm2wat` and `wat2wasm` for the shell                                                  |
@@ -67,6 +68,16 @@ On the first start `scratch-fs` downloads `lo.wasm` from `raw.githubusercontent.
 - **Whole workspace:** `Scratch: Download workspace as zip`. In a single-folder workspace the root cannot be selected in the Explorer, so the built-in Download cannot do it.
 - **A file or folder:** the Explorer's **Download...**. A folder is written file by file into a directory you pick, which needs the File System Access API, so it works in Chromium based browsers only.
 
+## Git
+
+`scratch-git` keeps a repository in the workspace (`.git`, hidden in the Explorer by VS Code's default `files.exclude`). Right after seeding it commits everything as `initial commit`, `lo.wasm` included, so a modified compiler is part of the history. A workspace that was seeded before gets that commit on its next start.
+
+- **Source Control view:** the usual two groups. **Changes** is the working tree against the index, **Staged Changes** is what the next commit will contain. Files have stage `+`, unstage `−` and discard buttons, and both groups have an "all" version. Badges (`M`, `U`, `A`, `D`) show in the view and in the Explorer, a click opens the diff, and the editor gutter marks changes against the index. A commit takes the staged files. Without any, it asks whether to stage all changes and commit them. Commit is in the title bar and Ctrl+Enter in the message box, History and Refresh are next to it.
+- **History:** `Scratch Git: History` lists the commits. A commit can show its changed files with a diff each, or restore all files to its state. A restore does not move anything in the history, the files become uncommitted changes (and the index is reset), so committing them records the revert.
+- **Shell:** the terminal has a `git` command with `status`, `add <path>...`, `restore [--staged] <path>...`, `reset <path>...`, `commit [-a] -m <message>` and `log`. `add .` takes the files below the current directory, `restore --staged` and `reset` unstage, `restore` discards from the index, and `commit -a` stages the changed tracked files first. It works on the same repository as the Source Control view, which updates after each command. Paths in the output are relative to the workspace root, and there is no `diff`.
+- **Download:** the zip from `Scratch: Download workspace as zip` includes `.git`, unpacked it is a normal repository. `Scratch: Reset workspace to examples` removes the repository with everything else.
+- **Not there:** branches, remotes (push and pull), merge and staging of single hunks. Commits are authored as `LO Playground <playground@localhost>`.
+
 ## WASM-4
 
 Open a LO file for the [WASM-4](https://wasm4.org) fantasy console (the ejected `test/demos/wasm4/src/` has samples) and use the game icon in the editor title, or `WASM-4: Run current file`. The file is compiled with the `lo.wasm` in the workspace root and the game opens in a tab next to the editor. Click the game to give it the keyboard (arrow keys, `X` and `Z`, `R` restarts). While the tab is open, saving any `.lo` file rebuilds the game and reloads it. The title bar of the game tab has three buttons: rebuild and restart the game now (always a full reload, `debug-rerun` icon), a toggle for reloading on save (setting `wasm4.rebuildOnSave`, `sync` when on and `sync-ignored` when off) and a toggle for hot swap (setting `wasm4.hotSwap`, keeps the memory of the game on reload, `beaker` when on and `beaker-stop` when off). VS Code's own toggle highlight is not used because themes do not render it clearly, so each toggle is a pair of commands with an icon per state. Build errors are in the "WASM-4" output.
@@ -100,6 +111,10 @@ Open a LO file for the [WASM-4](https://wasm4.org) fantasy console (the ejected 
 - Programs get the current directory mounted at `/`, relative paths like `compile main.lo` need that. `argv[0]` is added by wasm-wasi-core, so the arguments passed to `createProcess` start after the program name.
 
 **WASM-4.** The extension uses two builds of the runtime from the `wasm4` npm package (ISC license, version in `package.json` `config.wasm4`): the developer build with devtools in the editor tab, and the slim build in the exported page. The developer build expects the `w4 watch` server: it fetches `cart.wasm` and waits for `reload` and `hotswap` messages on a WebSocket. The tab replaces both with a small shim (`devServerShim` in the extension), so a rebuild only posts the new cart to the webview. The cart is compiled in the extension host by running `lo.wasm compile` with wasm-wasi-core, like the seeding does with `eject`. Only saved files are compiled, so the editor saves the active file before running. The export is checked against the committed `extras/assets/dark-maze.html` made by `w4 bundle`. The developer runtime also registers its key handler on `top`. For a cross-origin webview that throws and is ignored, but here the webview is same-origin, so the game would receive and swallow every key typed in the editor (it claims letters, space, `2`, `4` and `R`). The build removes that registration from the vendored copy and fails if it cannot find it, which happens when the runtime version changes.
+
+**Git.** The built-in Git extension needs a `git` executable, so `scratch-git` implements the Source Control view itself (`vscode.scm`) on top of isomorphic-git (MIT, pure JS, version in `package.json` `config`). `scratch-fs` exports its in-memory store, and `scratch-git` gives isomorphic-git a small `fs.promises` adapter over it, so git reads and writes entries directly, without events for the files below `.git`, and the whole tree, objects included, is persisted with the rest of the workspace. isomorphic-git expects a global `Buffer` that a worker does not have. The build bundles the `buffer` package with its two dependencies into `vendor/isomorphic-git/buffer.js`, and the extension passes it to the isomorphic-git bundle as a function parameter, so the other extensions in the host do not get a new global. The original side of the diffs and gutter markers is served by a content provider for the `scratch-git:` scheme (`?HEAD`, `?INDEX` or a commit id as the query). Both groups are derived from `statusMatrix` (its columns are HEAD, working tree and index), and the index entries come from a `STAGE()` walk, which serves the `?INDEX` side of the diffs and the discard (a discard restores from the index, like `git restore`). Working files are only written through `scratch-fs` (discard and restore), so editors see the change events.
+
+**Git in the shell.** `scratch-git` returns an API from `activate` (status, add, unstage, restore, commit, log), `lo-shell` calls it for the `git` builtin. The API waits for the repository to exist and refreshes the Source Control view after every call, so the shell and the view share one state.
 
 **Downloads.** An extension runs in a web worker and cannot start a browser download. `src/main.js` registers `playground.download`, which `scratch-fs` calls with the zip.
 

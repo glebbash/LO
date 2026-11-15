@@ -251,6 +251,80 @@ async function build() {
         );
     }
 
+    // isomorphic-git for scratch-git, plus the Buffer it expects (a web worker has none). The buffer package and its two
+    // dependencies are CommonJS, so they are wrapped in a tiny module loader instead of using a bundler.
+    {
+        const fetchPackage = async (name, version, files) => {
+            const tgz = path.join(CACHE, `${name}-${version}.tgz`);
+            if (!fs.existsSync(tgz))
+                await download(
+                    `https://registry.npmjs.org/${name}/-/${name}-${version}.tgz`,
+                    tgz,
+                );
+            const dir = path.join(CACHE, `${name}-${version}`);
+            fs.rmSync(dir, { recursive: true, force: true });
+            fs.mkdirSync(dir, { recursive: true });
+            sh("tar", [
+                "xzf",
+                tgz,
+                "-C",
+                dir,
+                "--strip-components=1",
+                ...files.map((f) => `package/${f}`),
+            ]);
+            return dir;
+        };
+        const target = path.join(
+            DIST,
+            "extensions/scratch-git/vendor/isomorphic-git",
+        );
+        fs.mkdirSync(target, { recursive: true });
+
+        const git = await fetchPackage("isomorphic-git", CFG.isomorphicGit, [
+            "index.umd.min.js",
+            "LICENSE.md",
+        ]);
+        for (const name of ["index.umd.min.js", "LICENSE.md"])
+            fs.copyFileSync(path.join(git, name), path.join(target, name));
+
+        const modules = [];
+        const licenses = [];
+        for (const [name, version] of Object.entries(CFG.bufferPackages)) {
+            const dir = await fetchPackage(name, version, [
+                "index.js",
+                "LICENSE",
+            ]);
+            modules.push(
+                `${JSON.stringify(name)}: function (module, exports, require) {\n${fs.readFileSync(path.join(dir, "index.js"), "utf8")}\n}`,
+            );
+            licenses.push(
+                `${name} ${version}\n\n${fs.readFileSync(path.join(dir, "LICENSE"), "utf8").trim()}\n`,
+            );
+        }
+        fs.writeFileSync(
+            path.join(target, "buffer.js"),
+            `(function () {
+const defs = {
+${modules.join(",\n")}
+};
+const cache = {};
+function load(name) {
+    if (!cache[name]) {
+        const module = (cache[name] = { exports: {} });
+        defs[name](module, module.exports, load);
+    }
+    return cache[name].exports;
+}
+return load("buffer");
+})()
+`,
+        );
+        fs.writeFileSync(
+            path.join(target, "LICENSE-buffer.txt"),
+            licenses.join("\n---\n\n"),
+        );
+    }
+
     // WASM-4 runtime for the wasm4 extension: the developer build for the editor tab, the slim one for exported pages.
     {
         const tgz = path.join(CACHE, `wasm4-${CFG.wasm4}.tgz`);

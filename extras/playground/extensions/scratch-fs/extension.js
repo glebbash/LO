@@ -205,9 +205,13 @@ exports.activate = async (ctx) => {
     await fs.load();
     ctx.subscriptions.push(vscode.workspace.registerFileSystemProvider("scratch", fs, { isCaseSensitive: true }));
     ctx.subscriptions.push(...registerSearch(fs));
-    if (fs.needsSeed) {
-        seed(fs).catch((e) => vscode.window.showErrorMessage(`Scratch FS setup failed (reload to retry): ${e?.message ?? e}`));
-    }
+    // Resolves to false when seeding failed, extensions that need the seeded files wait for it.
+    const ready = fs.needsSeed
+        ? seed(fs).then(() => true, (e) => {
+            vscode.window.showErrorMessage(`Scratch FS setup failed (reload to retry): ${e?.message ?? e}`);
+            return false;
+        })
+        : Promise.resolve(true);
     ctx.subscriptions.push(vscode.commands.registerCommand("scratch.downloadZip", async () => {
         const files = [];
         for (const [k, e] of [...fs.entries].sort(([a], [b]) => (a < b ? -1 : 1))) {
@@ -222,4 +226,5 @@ exports.activate = async (ctx) => {
         await idbSet([]);
         await vscode.commands.executeCommand("workbench.action.reloadWindow");
     }));
+    return { fs, root: ROOT, ready };
 };
