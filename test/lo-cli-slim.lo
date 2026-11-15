@@ -1,14 +1,14 @@
-// src/_cli.lo without @embed_files functionality
+// lib/lo/_cli.lo without @embed_files functionality
 
 @include("../lib/args.lo")
 @include("../lib/wasi.lo")
 
-@include("../src/common.lo")
-@include("../src/lexer.lo")
-@include("../src/registry.lo")
-@include("../src/printer.lo")
-@include("../src/typer.lo")
-@include("../src/codegen.lo")
+@include("../lib/lo/common.lo")
+@include("../lib/lo/lexer.lo")
+@include("../lib/lo/registry.lo")
+@include("../lib/lo/printer.lo")
+@include("../lib/lo/typer.lo")
+@include("../lib/lo/codegen.lo")
 
 @use_memory(min_pages = 1, exported)
 
