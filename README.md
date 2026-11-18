@@ -48,7 +48,16 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 ## 🚀 Getting started
 
-1️⃣ Using VS Code extension (recommended)
+1️⃣ Using the [LO Playground](https://lo.glebbash.dev) (recommended)
+
+> No install, no login: VS Code with the compiler, a [WASM-4](https://wasm4.org) game runtime with hot reload, a shell and git, all running in a browser tab
+
+- Open [lo.glebbash.dev](https://lo.glebbash.dev)
+- Follow the quick start (**LO Playground** in the bottom left) to make a game or change the compiler
+
+---
+
+2️⃣ Using VS Code extension
 
 > This option also works in vscode.dev
 
@@ -61,7 +70,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 ---
 
-2️⃣ Using wasmtime
+3️⃣ Using wasmtime
 
 - Install [wasmtime](https://github.com/bytecodealliance/wasmtime)
 - Download `lo.wasm` from this repo to your project's folder
@@ -70,7 +79,7 @@ Here are some of them with syntax highlighting from the [LO VS Code extension](#
 
 ---
 
-3️⃣ Using `lo.js`
+4️⃣ Using `lo.js`
 
 - Install any Node.js 24 compatible runtime (Deno and Bun should work)
 - Download `lo.js` from this repo to your project's folder, mark it as executable

@@ -226,5 +226,26 @@ exports.activate = async (ctx) => {
         await idbSet([]);
         await vscode.commands.executeCommand("workbench.action.reloadWindow");
     }));
+    // For the links in the About dialog (src/about.js): opens a file of the workspace once it is seeded. `find` puts the
+    // cursor at the start of the first line that contains that text (so a paste goes above it), `selectAll` selects
+    // everything (so a paste replaces it).
+    ctx.subscriptions.push(vscode.commands.registerCommand("scratch.open", async (rel, { find, selectAll } = {}) => {
+        if (!(await ready)) return;
+        let doc;
+        try {
+            doc = await vscode.workspace.openTextDocument(vscode.Uri.from({ scheme: "scratch", path: `${ROOT}/${rel}` }));
+        } catch {
+            return vscode.window.showErrorMessage(`${rel} not found. Scratch: Reset workspace to examples brings the samples back.`);
+        }
+        let selection;
+        if (selectAll) {
+            selection = new vscode.Range(0, 0, doc.lineCount - 1, doc.lineAt(doc.lineCount - 1).text.length);
+        } else if (find && doc.getText().includes(find)) {
+            const line = doc.lineAt(doc.positionAt(doc.getText().indexOf(find)).line);
+            selection = new vscode.Range(line.lineNumber, line.firstNonWhitespaceCharacterIndex, line.lineNumber, line.firstNonWhitespaceCharacterIndex);
+        }
+        const editor = await vscode.window.showTextDocument(doc, { selection, preview: false });
+        if (selection) editor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
+    }));
     return { fs, root: ROOT, ready };
 };

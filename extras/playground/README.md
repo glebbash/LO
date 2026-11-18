@@ -24,8 +24,8 @@ Open it as `localhost`, the page needs a secure context.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `package.json` `config`   | Pinned versions (VS Code web build, wabt, isomorphic-git, ...), the preloaded extensions and the default theme                                              |
 | `scripts.js`              | `build` creates `dist/`, `serve [port]` is a static server for it that sends the headers from `public/_headers`                        |
-| `src/`                    | `index.html`, `main.js` (workbench setup), `about.js` (About dialog) and `playground.code-profile` (default profile)                   |
-| `extensions/scratch-fs/`  | The `scratch:` file system, file and text search, first start seeding, workspace zip download                                          |
+| `src/`                    | `index.html`, `main.js` (workbench setup), `about.js` (About dialog with the quick start, the indicator in the bottom left pulses until it was opened once) and `playground.code-profile` (default profile) |
+| `extensions/scratch-fs/`  | The `scratch:` file system, file and text search, first start seeding, workspace zip download, `scratch.open` for the dialog's links  |
 | `extensions/scratch-git/` | Local git for the workspace: Source Control view, diffs, commit, discard, history                                                      |
 | `extensions/lo-shell/`    | Shell in the terminal view                                                                                                             |
 | `extensions/wasm4/`       | Runs WASM-4 games written in LO in an editor tab, rebuilds them on save, exports a standalone HTML page                                |

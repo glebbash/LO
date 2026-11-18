@@ -10,7 +10,8 @@
     "activationEvents": [
         "onFileSystem:scratch",
         "onStartupFinished",
-        "onCommand:scratch.downloadZip"
+        "onCommand:scratch.downloadZip",
+        "onCommand:scratch.open"
     ],
     "capabilities": {
         "virtualWorkspaces": true,

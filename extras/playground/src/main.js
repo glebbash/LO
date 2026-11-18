@@ -1,5 +1,5 @@
 import { create, commands, URI } from "/vscode/out/vs/workbench/workbench.web.main.internal.js";
-import { showAbout } from "/about.js";
+import { showAbout, hintUntilOpened } from "/about.js";
 
 const cfg = await (await fetch("/playground-config.json", { cache: "no-cache" })).json();
 const profileText = await (await fetch("/playground.code-profile", { cache: "no-cache" })).text();
@@ -86,6 +86,8 @@ create(document.body, {
         },
     },
 });
+
+hintUntilOpened();
 
 // A terminal panel restored as open from the saved UI state is empty, so create a shell for it.
 (async () => {
